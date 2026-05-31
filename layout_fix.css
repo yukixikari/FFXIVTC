@@ -1,0 +1,312 @@
+/*
+ * layout_fix.css  v4
+ *
+ * 核心修正思路（不動選單任何 CSS，特效完整保留）：
+ *
+ * .nav-glow 的幾何：
+ *   inset: -5px -28px -5px -6px → 右側超出 nav-item(280px) 達 28px
+ *   → 光暈視覺右邊界 = 308px（from screen left）
+ *   → border-right 的亮線、backdrop-blur 都在此右邊界
+ *
+ * 正確修法：
+ *   把 #viewport 的 left 設為 315px（308px + 7px 安全緩衝）
+ *   → 內容永遠在光暈右邊界之後，特效不被截斷，也不穿插內容
+ *   → 選單 CSS 零修改
+ *
+ * --nav-content-left : 桌面版內容區左邊界（= 光暈右邊 + 緩衝）
+ * --nav-top-h        : 手機版頂部選單高度
+ * --bp               : 桌面/手機模式切換斷點
+ */
+
+:root {
+  --nav-w:            280px;   /* nav-item 實際寬度 */
+  --nav-glow-overhang: 28px;   /* .nav-glow 超出 nav-item 右側的量 */
+  --nav-content-left:  315px;  /* 內容區安全起始點（280+28+7緩衝） */
+  --nav-top-h:          52px;  /* 手機版頂部選單高度 */
+}
+
+/* ════════════════════════════════════════════════════════════════
+   桌面版（≥ 1101px）：左側選單
+   ════════════════════════════════════════════════════════════════ */
+@media (min-width: 1101px) {
+
+  /* ── viewport 從光暈右邊界之後開始，光暈不再穿插內容 ── */
+  #viewport {
+    left: var(--nav-content-left) !important;
+  }
+
+  /* scene 的 inset:0 是相對於 #viewport，left:0 = 315px 那條線，正確 */
+  .scene {
+    left: 0 !important;
+  }
+
+  /* ── vw 寬度改為相對於可用空間，避免框架溢出到選單區 ── */
+  /* 可用寬度 = 100vw - 315px */
+  .news-outer {
+    width: min(calc(100vw - var(--nav-content-left) - 20px), 1120px) !important;
+  }
+  .tool-outer,
+  .sub-outer {
+    width: min(calc(100vw - var(--nav-content-left) - 20px), 1440px) !important;
+  }
+
+  /* noble-inner-frame 最大不超出可用空間 */
+  .noble-inner-frame {
+    max-width: calc(100vw - var(--nav-content-left) - 30px);
+    box-sizing: border-box;
+  }
+
+  /* ── 漸進縮減 padding（視窗縮小時內容仍可讀）── */
+  @media (max-width: 1420px) {
+    .noble-inner-frame {
+      padding: 52px 90px !important;
+      min-width: unset !important;
+    }
+    .noble-inner-frame.intro-layout { padding: 44px 90px !important; }
+    .noble-inner-frame.news-layout  { padding: 44px 70px 36px !important; }
+    .noble-inner-frame.links-grid   { padding: 44px 70px !important; min-width: unset !important; }
+  }
+
+  @media (max-width: 1280px) {
+    .noble-inner-frame {
+      padding: 40px 60px !important;
+      min-width: unset !important;
+    }
+    .noble-inner-frame.intro-layout { padding: 36px 60px !important; }
+    .noble-inner-frame.news-layout  { padding: 36px 52px 30px !important; }
+    .noble-inner-frame.links-grid {
+      padding: 36px 50px !important;
+      grid-template-columns: 1fr !important;  /* 指南降為單欄 */
+    }
+    .royal-main-title {
+      font-size: 4.4rem !important;
+      letter-spacing: 14px !important;
+    }
+  }
+
+  @media (max-width: 1180px) {
+    .noble-inner-frame {
+      padding: 30px 36px !important;
+    }
+    .noble-inner-frame.intro-layout { padding: 28px 36px !important; }
+    .noble-inner-frame.news-layout  { padding: 28px 36px 24px !important; }
+    .noble-inner-frame.links-grid   { padding: 28px 30px !important; }
+    .royal-main-title {
+      font-size: 3.8rem !important;
+      letter-spacing: 11px !important;
+    }
+    .ultra-elegant-en {
+      font-size: 1.5rem !important;
+      letter-spacing: 3px !important;
+    }
+    .quote-text { font-size: .94rem !important; }
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   手機 / 窄視窗（≤ 1100px）：頂部選單
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 1100px) {
+
+  /* ── 選單：水平頂部列 ── */
+  .royal-nav {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    display: flex !important;          /* 補漏：原始 CSS 無 display:flex */
+    flex-direction: row !important;
+    align-items: center !important;
+    height: var(--nav-top-h) !important;
+    background: rgba(5,4,10,.94) !important;
+    backdrop-filter: blur(16px) !important;
+    border-bottom: 1px solid rgba(197,160,89,.22) !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    gap: 0 !important;
+    z-index: 9999 !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
+  .royal-nav::-webkit-scrollbar { display: none; }
+
+  /* nav-item 橫向排列 */
+  .nav-item {
+    width: auto !important;
+    min-width: 64px !important;
+    height: var(--nav-top-h) !important;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    flex-shrink: 0 !important;
+    justify-content: center !important;
+    -webkit-tap-highlight-color: rgba(197,160,89,.15);
+  }
+
+  /* ribbon → 底線 */
+  .nav-ribbon {
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 3px !important;
+    background: linear-gradient(to right, var(--gold-bright), var(--gold), var(--gold-deep)) !important;
+  }
+  .nav-item:hover .nav-ribbon,
+  .nav-item.active .nav-ribbon {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(197,160,89,.7) !important;
+  }
+
+  /*
+   * 頂部列模式：nav-glow 向下展開會遮住內容，改為向上展開
+   * inset 上方 -28px（向上溢出），下方 0（不向下溢出），
+   * 圓角改左上/右上，讓光暈出現在 nav bar 上方（不遮內容）
+   */
+  .nav-glow {
+    inset: -28px -5px 0 -5px !important;
+    border-radius: 10px 10px 0 0 !important;
+    background: linear-gradient(
+      to top,
+      transparent 0%,
+      rgba(197,160,89,.04) 25%,
+      rgba(197,160,89,.12) 55%,
+      rgba(197,160,89,.32) 80%,
+      rgba(197,160,89,.52) 100%
+    ) !important;
+    border-top: 1.5px solid rgba(252,246,186,.55) !important;
+    border-right: 1px solid rgba(197,160,89,.12) !important;
+    border-bottom: none !important;
+    border-left: 1px solid rgba(197,160,89,.12) !important;
+  }
+
+  .nav-content {
+    padding-left: 0 !important;
+    align-items: center !important;
+  }
+  .nav-content .cn {
+    font-size: .82rem !important;
+    letter-spacing: 1.5px !important;
+  }
+  .nav-content .en { display: none !important; }
+
+  /* ── viewport：頂部選單以下 ── */
+  #viewport {
+    position: fixed !important;
+    top: var(--nav-top-h) !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    display: block !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    pointer-events: all !important;
+    align-items: unset !important;
+    justify-content: unset !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  /* ── scene：相對排列 ── */
+  .scene {
+    position: relative !important;
+    inset: auto !important;
+    left: 0 !important;
+    display: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: all !important;
+    transition: none !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 24px 8px 40px !important;
+    min-height: calc(100vh - var(--nav-top-h)) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .scene.active {
+    display: flex !important;
+    z-index: auto !important;
+  }
+
+  /* ── frames ── */
+  .noble-outer-frame {
+    padding: 8px !important;
+    width: calc(100vw - 12px) !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .noble-inner-frame {
+    padding: 22px 14px !important;
+    min-width: unset !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .noble-inner-frame.intro-layout { padding: 20px 14px !important; }
+  .noble-inner-frame.links-grid   { padding: 14px !important; grid-template-columns: 1fr !important; }
+  .noble-inner-frame.news-layout  { padding: 22px 14px 18px !important; }
+
+  .news-outer,
+  .tool-outer,
+  .sub-outer {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* ── Home ── */
+  .royal-main-title   { font-size: 2.6rem !important; letter-spacing: 10px !important; }
+  .ultra-elegant-en   { font-size: 1.15rem !important; letter-spacing: 3px !important; }
+  .quote-text         { font-size: .82rem !important; letter-spacing: 1px !important; }
+
+  /* ── About ── */
+  .intro-grid { grid-template-columns: 1fr !important; }
+
+  /* ── News / Fashion ── */
+  .news-list-container { max-height: none !important; }
+
+  /* ── Tools ── */
+  .tool-layout {
+    max-height: none !important;
+    overflow-y: visible !important;
+    padding: 14px 10px !important;
+  }
+  .sub-parts-row  { grid-template-columns: 1fr 1fr !important; }
+  .sub-filter-row { grid-template-columns: 1fr 1fr !important; }
+
+  /* ── Macro ── */
+  .macro-root-frame {
+    max-height: none !important;
+    overflow-y: visible !important;
+    padding: 14px 10px 28px !important;
+  }
+  #macro.scene,
+  #macro.scene.active {
+    align-items: center !important;
+    overflow-y: hidden !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* ── 橫向捲動提示 ── */
+  .sub-scroll-hint { display: block !important; }
+  #sub-results { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sub-table { min-width: 700px !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   極窄視窗（≤ 480px）
+   ════════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .royal-main-title          { font-size: 1.9rem !important;  letter-spacing: 7px !important; }
+  .unified-gold-header.small { font-size: 1.1rem !important;  letter-spacing: 4px !important; }
+  .sub-parts-row             { grid-template-columns: 1fr !important; }
+  .sub-filter-row            { grid-template-columns: 1fr !important; }
+  .nav-content .cn           { font-size: .72rem !important;  letter-spacing: 1px !important; }
+  .nav-item                  { padding: 0 9px !important;     min-width: 52px !important; }
+}
