@@ -2,6 +2,12 @@
   "source": "https://www.ffxiv.com.tw/web/news/news_list.aspx",
   "items": [
     {
+      "title": "反詐騙宣導與公平遊戲提醒",
+      "date": "2026/09/08",
+      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mWZZW52jv4",
+      "pinned": true
+    },
+    {
       "title": "一步步帶您踏入FINAL FANTASY XIV 繁體中文版的世界！",
       "date": "2025/08/09",
       "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=LENEEYbBA",
@@ -26,33 +32,27 @@
       "pinned": true
     },
     {
-      "title": "全家FamilyMart聯名活動即將結束",
-      "date": "2026/08/24",
-      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mWZ3dX0e14",
+      "title": "訂閱扣款異常公告(已修復)",
+      "date": "2026/09/07",
+      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mPPY5p9pRm",
       "pinned": false
     },
     {
-      "title": "08/25 官網維護",
-      "date": "2026/08/24",
-      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mPP5dBR6wm",
+      "title": "09/08 商城新品上架",
+      "date": "2026/09/04",
+      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mPP9ZwA8om",
       "pinned": false
     },
     {
-      "title": "冒險錄販售預告",
-      "date": "2026/08/21",
-      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mPPwLKZ6wm",
+      "title": "迦樓羅、巴哈姆特World異常(已修復)",
+      "date": "2026/09/01",
+      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mPP3ZnD7Jm",
       "pinned": false
     },
     {
-      "title": "08/25 商城新品上架",
-      "date": "2026/08/21",
-      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mWZD1XrQR4",
-      "pinned": false
-    },
-    {
-      "title": "08/27 新生祭-思念的花朵，於海都盛開",
-      "date": "2026/08/20",
-      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mPPwl3OgRm",
+      "title": "GAMERSCON周邊商品販售情況之說明與致歉",
+      "date": "2026/08/31",
+      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mWZ7Erq594",
       "pinned": false
     }
   ]
