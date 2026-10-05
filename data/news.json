@@ -38,6 +38,12 @@
       "pinned": true
     },
     {
+      "title": "10/06 商城新品上架",
+      "date": "2026/10/05",
+      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mP1Ny21Qea",
+      "pinned": false
+    },
+    {
       "title": "遊戲連線異常",
       "date": "2026/10/03",
       "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mP1WjVrloa",
@@ -47,12 +53,6 @@
       "title": "週年徵稿比賽",
       "date": "2026/09/29",
       "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mP1GWXlYZa",
-      "pinned": false
-    },
-    {
-      "title": "09/30 獻給英雄的夜曲活動",
-      "date": "2026/09/24",
-      "href": "https://www.ffxiv.com.tw/web/news/news_content.aspx?id=mP12QzGloa",
       "pinned": false
     }
   ]
