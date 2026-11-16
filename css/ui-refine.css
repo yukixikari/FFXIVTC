@@ -1,0 +1,301 @@
+/* ui-refine.css — 介面統一調整（載入於 content-royal-v2.css 之後、touch-fixes.css 之前）
+ *
+ * 層級規則：
+ *   舞台  頁面外框                ：完整飾物（content-royal / content-royal-v2）
+ *   匾額  單一物件（簡介、大按鈕） ：切換按鈕同款，等比放大（plaque.js）
+ *   容器  表格、結果列表、巨集面板 ：一條淡外框＋小圓角，標題用小菱形＋漸隱線
+ *   項目  資訊列、表格列           ：不加框，只用分隔線／hover 光柱
+ */
+
+/* ───────── 1. 匾額（plaque.js 畫的 SVG） ───────── */
+[data-plaque] { position: relative; isolation: isolate; }
+[data-plaque] > *:not(.plq-svg) { position: relative; z-index: 1; }
+.plq-svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 0; }
+.plq-fill { fill: rgba(16,12,9,.5); transition: fill .3s ease; }
+.plq-in   { fill: none; stroke: rgba(197,160,89,.3); stroke-width: 1; transition: stroke .3s ease; }
+.plq-out  { fill: none; stroke-opacity: .68; stroke-width: 1.5; transition: stroke-opacity .3s ease; }
+.plq-sh   { transform: translateX(0); }
+
+/* 按鈕型匾額：hover 與切換按鈕一樣亮起、光掃過 */
+[data-plaque="btn"]:hover .plq-fill { fill: rgba(60,44,20,.78); }
+[data-plaque="btn"]:hover .plq-in   { stroke: rgba(252,228,170,.62); }
+[data-plaque="btn"]:hover .plq-out  { stroke-opacity: 1; }
+[data-plaque="btn"]:hover .plq-sh   { transform: translateX(calc(var(--sw, 180px) * 1.9)); transition: transform .9s cubic-bezier(.22,1,.36,1); }
+[data-plaque="btn"]:active { transform: scale(.97); }
+@media (prefers-reduced-motion: reduce) { [data-plaque="btn"]:hover .plq-sh { transition: none; } }
+
+/* ───────── 2. 大按鈕（查看全部公告／前往原文）：外觀交給匾額 ───────── */
+.news-visit-btn[data-plaque] {
+  border: none !important; background: none !important; box-shadow: none !important;
+  padding: calc(16px * var(--ps, 1)) calc(44px * var(--ps, 1)) !important;
+  transform: none;
+}
+.news-visit-btn[data-plaque]::after { content: none !important; }
+.news-visit-btn[data-plaque]:hover { background: none !important; transform: none; }
+.news-visit-btn[data-plaque="btn"]:active { transform: scale(.97); }
+
+/* ───────── 3. 簡介：四張「匾額卡片」（切換按鈕同款設計，由 plaque.js 畫外框） ─────────
+   外框由 data-plaque="card" 交給 plaque.js；內容置中：第一行「寶飾座＋中文標籤＋英文副標」，第二行「數值」。
+   寶飾座中間鑲一顆切面寶石（沒有圖示），每張卡片有自己的寶石色（--gem）；卡片數量不限（自動換行）。
+   動態：進場依序點亮、常駐呼吸、光之巡禮、hover／點擊聚光（見下方 @keyframes，與 ui-motion.js）。 */
+.intro-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 24px 26px;
+  width: 100%; max-width: 720px; margin: 8px auto 0; box-sizing: border-box; padding: 0 6px;
+  --seat-w: 40px;              /* ★ 寶飾座大小：這個數字＝菱形框本身的寬度（頁面上緣中央扣飾的菱框約 30px）。只改這一處即可 */
+}
+.intro-card2 {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px;
+  box-sizing: border-box; text-align: center; cursor: default;
+  /* 尖刺會超出菱框上下各約 0.37 倍寬度，所以上下留白跟著 --seat-w 走 */
+  padding: calc(var(--seat-w) * .37 + 20px) calc(18px * var(--ps, 1)) calc(20px * var(--ps, 1));
+  transition: opacity .35s ease, filter .35s ease;
+}
+.ic2-head { display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 100%; margin-bottom: calc(var(--seat-w) * .37 - 4px); }
+.ic2-seat { position: relative; flex: none; margin: 0 calc(var(--seat-w) * .1); width: var(--seat-w); height: calc(var(--seat-w) * .63); display: block; color: rgb(var(--gem, 232,201,128)); }
+.ic2-seat > svg { position: absolute; left: 50%; top: 50%; width: calc(var(--seat-w) * 1.4857); height: calc(var(--seat-w) * 1.4857); transform: translate(-50%, -50%); overflow: visible; }
+.ic2-seat::before {            /* 寶石座底下的柔光：正圓（避免橫向橢圓像虹膜） */
+  content: ""; position: absolute; left: 50%; top: 50%; width: calc(var(--seat-w) * .7); height: calc(var(--seat-w) * .7);
+  margin: calc(var(--seat-w) * -.35) 0 0 calc(var(--seat-w) * -.35); border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--gem), .24), transparent 70%);
+}
+.ic2-seat::after {             /* 彗星外圈（正圓，直徑＝菱框寬度）：hover／進場時轉動 */
+  content: ""; position: absolute; left: 0; top: 50%; width: 100%; height: var(--seat-w); margin-top: calc(var(--seat-w) / -2);
+  border-radius: 50%; opacity: 0; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 56%, rgba(var(--gem), .95) 88%, rgba(255,248,222,.98) 95%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.2px), #000 calc(100% - 1.6px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2.2px), #000 calc(100% - 1.6px));
+}
+.ic2-head .intro-lbl { margin: 0; font-size: .72rem; letter-spacing: 4px; opacity: .9; white-space: nowrap; }
+.ic2-en { font-family: "Cinzel Decorative", serif; font-size: .56rem; letter-spacing: 3.5px; color: rgba(var(--gem), .8); white-space: nowrap; }
+.intro-card2 .intro-val { margin: 0; font-size: 1.08rem; line-height: 1.35; letter-spacing: 1.6px; text-align: center; }
+.intro-cards + .intro-motto { max-width: 720px; margin: 38px auto 0; padding-top: 28px; box-sizing: border-box; }
+
+/* 卡片 hover／點擊：外框光掃過、外圈彗星轉動、其他卡片微暗（聚光） */
+[data-plaque="card"]:hover .plq-fill { fill: rgba(52,38,18,.7); }
+[data-plaque="card"]:hover .plq-out  { stroke-opacity: 1 !important; }
+[data-plaque="card"]:hover .plq-in   { stroke: rgba(252,228,170,.55); }
+[data-plaque="card"]:hover .plq-sh   { transform: translateX(calc(var(--sw, 180px) * 1.9)); transition: transform .9s cubic-bezier(.22,1,.36,1); }
+.intro-card2:hover .ic2-seat::after  { opacity: .95; animation: ic-spin 3.4s linear infinite; }
+.intro-card2:hover .ic2-seat > svg .sp { transform: scaleY(1.3); }
+.intro-cards:has(.intro-card2:hover) .intro-card2:not(:hover) { opacity: .7; filter: saturate(.75); }
+
+@media (max-width: 640px) {
+  .intro-cards { grid-template-columns: 1fr; gap: 20px; max-width: 460px; }
+  .intro-card2 { gap: 10px; padding-left: calc(12px * var(--ps, 1)); padding-right: calc(12px * var(--ps, 1)); }
+  .ic2-head { gap: 9px; }
+  .ic2-head .intro-lbl { letter-spacing: 3px; }
+  .ic2-en { letter-spacing: 2.5px; }
+  .intro-card2 .intro-val { font-size: 1rem; letter-spacing: .8px; text-wrap: balance; }
+}
+
+/* 動態 ───────────────────────────────────────── */
+.ic2-seat > svg .sp { transform-box: fill-box; transform-origin: center; transition: transform .45s cubic-bezier(.3,1.4,.5,1); }
+.ic2-seat > svg .gm { transform-box: fill-box; transform-origin: center; }
+/* 進場：依序（間隔 120ms）升起並點亮；尖刺彈出、中央寶石翻轉點亮、外圈彗星轉一圈、標籤字距收攏、數值由左向右被光掃出 */
+.scene.active .intro-card2 { animation: ic-in .75s cubic-bezier(.2,.8,.2,1) calc(var(--i) * 120ms + 260ms) both; }
+.scene.active .ic2-seat::after { animation: ic-ring-once 1.2s cubic-bezier(.3,.1,.2,1) calc(var(--i) * 120ms + 640ms) both; }
+.scene.active .ic2-seat > svg .sp { animation: ic-spike .7s cubic-bezier(.3,1.5,.5,1) calc(var(--i) * 120ms + 560ms) both; }
+.scene.active .ic2-seat > svg .gm { animation: ic-flip .8s cubic-bezier(.2,.9,.3,1.2) calc(var(--i) * 120ms + 680ms) both; }
+.scene.active .ic2-head .intro-lbl { animation: ic-ls 1s ease-out calc(var(--i) * 120ms + 520ms) both; }
+.scene.active .intro-card2 .intro-val {
+  -webkit-mask: linear-gradient(90deg, #000 45%, transparent 55%) 100% 0 / 260% 100% no-repeat;
+          mask: linear-gradient(90deg, #000 45%, transparent 55%) 100% 0 / 260% 100% no-repeat;
+  animation: ic-reveal .95s ease-out calc(var(--i) * 120ms + 760ms) forwards;
+}
+/* 常駐：寶石柔光呼吸（四張錯開）＋光之巡禮（每 14 秒一圈，依序 1→2→4→3 點亮一下，同一時間只有一張在亮） */
+.scene.active .ic2-seat::before { animation: ic-breathe 5.6s ease-in-out calc(var(--i) * 1.3s + 2.6s) infinite; }
+.scene.active .intro-card2 .plq-out { animation: ic-tour 14s ease-in-out calc(var(--t) * 1.1s + 3.4s) infinite; }
+@keyframes ic-in      { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes ic-spike   { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes ic-flip    { from { opacity: 0; transform: rotateY(90deg) scale(.4); } to { opacity: 1; transform: none; } }
+@keyframes ic-ls      { from { opacity: 0; letter-spacing: 10px; } to { opacity: .9; letter-spacing: 4px; } }
+@keyframes ic-reveal  { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+@keyframes ic-ring-once { 0% { opacity: .95; transform: rotate(-120deg); } 80% { opacity: .9; } 100% { opacity: 0; transform: rotate(360deg); } }
+@keyframes ic-spin    { to { transform: rotate(360deg); } }
+@keyframes ic-breathe { 0%, 100% { opacity: .55; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.12); } }
+@keyframes ic-tour    { 0%, 100% { stroke-opacity: .68; } 3.5%, 8% { stroke-opacity: 1; } 13% { stroke-opacity: .68; } }
+
+/* 金粉（ui-motion.js 產生） */
+.gd { position: fixed; left: 0; top: 0; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; pointer-events: none; z-index: 9990;
+      background: radial-gradient(circle, #fff6d6, rgba(var(--gem, 233,207,141), .9) 55%, transparent 72%); box-shadow: 0 0 6px rgba(var(--gem, 233,207,141), .8); }
+
+/* ───────── 4. 巨集頁：容器（取消舊版四角短線） ─────────
+   · 取消 v2 加在 .mt-sec 上的四角短線（舊版殘留的簡陋角框）。
+   · 面板統一寬度、圓角與間距；標題前的 ▸ 改成小菱形（與整站分隔線的菱形珠點同一語彙）。 */
+.mt-sec::after { content: none; }
+.macro-root-frame > .mt-sec { width: 100%; box-sizing: border-box; border-radius: 10px; margin-bottom: 0; }
+.macro-root-frame > .mt-sec:not(.mt-warn-sec) { margin-top: 18px; }
+.macro-root-frame > .mt-global-bar + .mt-sec { margin-top: 0; }
+.macro-root-frame > .mt-warn-sec { margin-top: 14px; }
+.macro-root-frame > .mt-sec:last-child { margin-top: 30px; }          /* 常用指令代名詞：獨立的參考區，與上面三塊隔開一點 */
+.mt-sec-lbl::before {
+  content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 10px; position: relative; top: -1px;
+  background: currentColor; transform: rotate(45deg); opacity: .85;
+}
+.mt-warn-sec .mt-sec-lbl { color: rgba(255,190,100,.92) !important; }
+
+/* ───────── 5. 表頭：與市場同一組「暖金底＋雙線底邊」，並且整行一條漸變 ─────────
+   .sub-table（潛水艇、飛空艇共用）的表頭沒有 sticky，所以能直接把漸變畫在 thead 的列上，
+   整行只有一條由左濃到右淡的漸層，不會逐格重複；th 本身保持透明。 */
+.sub-table thead tr {
+  background:
+    linear-gradient(90deg, rgba(197,160,89,.18), rgba(197,160,89,.07) 85%, rgba(197,160,89,.02)),
+    #0d0a07;
+}
+.sub-table th {
+  background: transparent;
+  color: rgba(234,208,146,.94);
+  border-bottom: 1px solid rgba(214,180,106,.62);
+  box-shadow: 0 2px 0 #060505, 0 3px 0 rgba(197,160,89,.2);
+}
+.sub-table th.sorted, .sub-table th.sub-sort-th:hover { color: var(--gold-bright, #fce4aa); }
+
+/* ───────── 6. 市場價格列表：補上容器外框，寬度與上方資訊列對齊 ─────────
+   表頭（#mk-tab-head）與列表（#mk-listing-table-slot）是分開的兩個元素（表頭固定、列表單獨捲動），
+   所以各畫一半框：表頭畫上半、列表畫下半，圓角與 .sub-table 同為 10px。
+   原本列有 536px／620px 的寬度上限（緊靠左邊），加了外框後會顯得「縮進去」，
+   所以改成與容器同寬，各欄用 flex-grow 依比例展開（窄螢幕時照舊依比例縮小）。 */
+#mk-tab-head, #mk-listing-table-slot { max-width: none; box-sizing: border-box; }
+#mk-tab-head .market-flexrow, #mk-listing-table-slot .market-flexrow,
+#mk-tab-head .market-flexrow:has(.mfl-time), #mk-listing-table-slot .market-flexrow:has(.mfl-time) { max-width: none; }
+#mk-tab-head .market-flexrow .mfl-price, #mk-listing-table-slot .market-flexrow .mfl-price { flex: 1.1 1 104px; }
+#mk-tab-head .market-flexrow .mfl-qty,   #mk-listing-table-slot .market-flexrow .mfl-qty   { flex: .6 1 56px; }
+#mk-tab-head .market-flexrow .mfl-total, #mk-listing-table-slot .market-flexrow .mfl-total { flex: 1.1 1 100px; }
+#mk-tab-head .market-flexrow .mfl-buyer, #mk-listing-table-slot .market-flexrow .mfl-buyer { flex: 2 3 140px; }
+#mk-tab-head .market-flexrow .mfl-world, #mk-listing-table-slot .market-flexrow .mfl-world { flex: 1.2 1 80px; }
+#mk-tab-head .market-flexrow .mfl-time,  #mk-listing-table-slot .market-flexrow .mfl-time  { flex: .9 1 84px; }
+#mk-tab-head:not(:empty) {
+  border: 1px solid var(--tb, rgba(197,160,89,.25)); border-bottom: none; border-radius: 10px 10px 0 0; overflow: hidden;
+}
+#mk-listing-table-slot:not(:empty) {
+  border: 1px solid var(--tb, rgba(197,160,89,.25)); border-top: none; border-radius: 0 0 10px 10px;
+}
+#mk-listing-table-slot .market-flexrow:last-child { border-bottom: none; }
+
+/* ───────── 7. 頁面標題旁的圖示：與選單「目前頁面」同一套靜態徽章 ─────────
+   圓形徽章＋漸變底＋專屬色圖示；平常靜止（標題不能點，不做 hover 與持續流光，避免被誤認為按鈕），
+   進頁面時外圈光環轉一圈（沿用 cr-ring）。大小以標題字級為基準（≈1.3 倍），所以手機上會自動縮小。 */
+.unified-gold-header .cr-title-ic {
+  position: relative; display: inline-grid; place-items: center; vertical-align: middle;
+  width: 1.8em; height: 1.8em; font-size: .72em; line-height: 1;
+  margin: -.1em .85em 0 0; letter-spacing: 0;
+  border-radius: 50%; border: 1px solid rgba(var(--acc),.7);
+  background: radial-gradient(circle at 32% 28%, rgba(var(--acc),.26), rgba(197,160,89,.05) 62%), #0b0908;
+  box-shadow: 0 0 9px rgba(var(--acc),.26), inset 0 0 8px rgba(var(--acc),.18);
+  color: rgba(var(--acc),.94); -webkit-text-fill-color: currentColor; filter: none;
+}
+.unified-gold-header .cr-title-ic::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%; pointer-events: none; opacity: .62;
+  background: conic-gradient(from 0deg, transparent 0 52%, rgba(var(--acc), .95) 86%, rgba(255,246,214,.98) 94%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.8px), #000 calc(100% - 2.1px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2.8px), #000 calc(100% - 2.1px));
+  filter: drop-shadow(0 0 3px rgba(var(--acc), .85));
+  animation: ttl-ring-loop 9s linear infinite;
+}
+/* 進頁面：與選單 hover 同等強度轉兩整圈（約 1.7 秒），之後轉入緩慢循環（9 秒一圈、亮度約 0.6），標題徽章一直是「活的」 */
+.scene.active .unified-gold-header .cr-title-ic::after {
+  animation: ttl-ring-intro 1.7s cubic-bezier(.3,.1,.2,1) 1 both, ttl-ring-loop 9s linear 1.7s infinite;
+}
+/* 光之接力：光抵達前先把光環壓住，抵達後才點燃（ui-motion.js 加／移除 cr-hold） */
+.unified-gold-header .cr-title-ic.cr-hold { opacity: .35; }
+.unified-gold-header .cr-title-ic.cr-hold::after { animation: none !important; opacity: 0; }
+.unified-gold-header .cr-title-ic.cr-pop { animation: ttl-pop .75s ease-out; }
+.unified-gold-header.ttl-flash { animation: ttl-flash 1s ease-out; }
+@keyframes ttl-ring-intro { 0% { opacity: 1; transform: rotate(0deg); } 100% { opacity: .62; transform: rotate(720deg); } }
+@keyframes ttl-ring-loop  { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes ttl-pop   { 0% { transform: scale(1); box-shadow: 0 0 9px rgba(var(--acc), .26); } 30% { transform: scale(1.16); box-shadow: 0 0 22px rgba(var(--acc), .85); } 100% { transform: scale(1); box-shadow: 0 0 9px rgba(var(--acc), .26); } }
+@keyframes ttl-flash { 0% { filter: brightness(1); } 35% { filter: brightness(1.7) drop-shadow(0 0 8px rgba(var(--acc), .55)); } 100% { filter: none; } }
+
+/* 光之接力的光點 */
+.relay-mote { position: fixed; left: 0; top: 0; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; pointer-events: none; z-index: 9995;
+  background: radial-gradient(circle, #fffbe6 0 30%, rgba(var(--acc, 255,232,176), .95) 55%, transparent 72%); box-shadow: 0 0 12px 3px rgba(var(--acc, 255,232,176), .75); }
+
+/* ───────── 8. 指南頁補上與其他頁相同的內容頁標題（links-grid 是兩欄格線，標題與分隔線要橫跨兩欄） ───────── */
+.links-grid > .links-title, .links-grid > .links-div { grid-column: 1 / -1; }
+.links-grid > .links-title { justify-self: center; text-align: center; }
+.links-grid > .links-div { margin-bottom: 22px; }
+
+/* ───────── 9. 載入：寶飾座甦醒（＋頁面層級的飾桿光波） ─────────
+   ui-motion.js 把各頁原本的載入圖示換成「寶飾座載入器」：
+   ‧ 上下尖刺輪流伸縮（像呼吸）、一道斜光反覆掃過主寶石切面、兩側小鑽輪流亮起、外圈彗星持續環繞
+   ‧ 頁面層級（.gl-rod）：寶飾座兩側加一條圓點飾桿（與頂部選單下緣同一種圓點），光波從中央向兩側擴散
+   ‧ 延遲 0.25 秒才出現：資料很快回來時根本不會看到載入器，避免閃一下
+   ‧ 結束時（頁面層級、且停留超過 0.45 秒）寶石位置迸出一小團金粉 */
+.gl-asm {
+  --gem: 233, 207, 141; position: relative; display: inline-grid; place-items: center; flex: none; vertical-align: middle;
+  font-size: 0 !important; color: rgb(var(--gem)) !important; width: 28px; height: 24px;
+  animation: gl-show .3s ease-out .25s both !important; transform: none !important;
+}
+.gl-asm::before, .gl-asm::after { content: none !important; }
+.gl-asm .ld-seat { --seat-w: 16px; margin: 0; }
+.gl-asm .ld-seat::before { content: ""; }
+.gl-asm .ld-seat::after  { content: ""; opacity: .9 !important; animation: ic-spin 1.8s linear infinite !important; }
+.gl-asm.gl-rod { width: 176px; height: 58px; }
+.gl-asm.gl-rod .ld-seat { --seat-w: 40px; position: relative; z-index: 1; }
+.gl-asm .ld-seat > svg .sp { transform-box: view-box; transform-origin: 50% 50%; }
+.gl-asm .ld-seat > svg .sp:nth-of-type(1) { animation: ld-spike-t 1.8s ease-in-out infinite !important; }
+.gl-asm .ld-seat > svg .sp:nth-of-type(2) { animation: ld-spike-b 1.8s ease-in-out infinite !important; }
+.gl-asm .ld-seat > svg .gm  { transform-box: fill-box; transform-origin: center; animation: ld-gem 1.8s ease-in-out infinite !important; }
+.gl-asm .ld-seat > svg .shw { animation: ld-sheen 1.8s ease-in-out infinite; }
+.gl-asm .ld-seat > svg .sg  { transform-box: fill-box; transform-origin: center; }
+.gl-asm .ld-seat > svg .sgl { animation: ld-sg 1.8s ease-in-out infinite; }
+.gl-asm .ld-seat > svg .sgr { animation: ld-sg 1.8s ease-in-out -.9s infinite; }
+/* 飾桿：暗的圓點底＋由中央向兩側擴散的亮點波（寶飾座兩側各留 30px 不畫點） */
+.gl-asm.gl-rod::before, .gl-asm.gl-rod::after {
+  content: "" !important; position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; pointer-events: none;
+  -webkit-mask: linear-gradient(90deg, transparent 0, #000 18%, #000 33%, transparent 34%, transparent 66%, #000 67%, #000 82%, transparent 100%);
+          mask: linear-gradient(90deg, transparent 0, #000 18%, #000 33%, transparent 34%, transparent 66%, #000 67%, #000 82%, transparent 100%);
+}
+.gl-asm.gl-rod::before { background: radial-gradient(circle, rgba(233,207,141,.42) 1.4px, transparent 2px) center / 9px 6px repeat-x; }
+.gl-asm.gl-rod::after {
+  background: radial-gradient(circle, #fff3c4 1.7px, rgba(233,207,141,.9) 2px, transparent 3px) center / 9px 6px repeat-x;
+  -webkit-mask:
+    radial-gradient(closest-side, transparent 55%, #000 72%, transparent 92%) 50% 50% / 14% 100% no-repeat,
+    linear-gradient(90deg, transparent 0, #000 18%, #000 33%, transparent 34%, transparent 66%, #000 67%, #000 82%, transparent 100%);
+  -webkit-mask-composite: source-in;
+          mask:
+    radial-gradient(closest-side, transparent 55%, #000 72%, transparent 92%) 50% 50% / 14% 100% no-repeat,
+    linear-gradient(90deg, transparent 0, #000 18%, #000 33%, transparent 34%, transparent 66%, #000 67%, #000 82%, transparent 100%);
+          mask-composite: intersect;
+  animation: ld-wave 1.8s cubic-bezier(.3,.1,.5,1) infinite;
+}
+/* 載入器所在的容器改成直排（飾桿＋寶飾座在上，文字在下） */
+.craft-loading:not(.craft-error), .news-loading, .sub-mogship .sub-busy { flex-direction: column; gap: 10px; }
+.sub-mogship .sub-busy .ph { font-size: 0; }
+@keyframes gl-show   { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ld-spike-t { 0%, 100% { transform: scaleY(.6); } 50% { transform: scaleY(1.22); } }
+@keyframes ld-spike-b { 0%, 100% { transform: scaleY(1.22); } 50% { transform: scaleY(.6); } }
+@keyframes ld-gem    { 0%, 100% { transform: scale(.94); filter: brightness(.95); } 50% { transform: scale(1.07); filter: brightness(1.25); } }
+@keyframes ld-sheen  { 0%, 8% { transform: translateX(-9px); opacity: 0; } 20% { opacity: 1; } 55% { transform: translateX(10px); opacity: 1; } 62%, 100% { transform: translateX(11px); opacity: 0; } }
+@keyframes ld-sg     { 0%, 100% { opacity: .4; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes ld-wave   { from { -webkit-mask-size: 14% 100%, 100% 100%; mask-size: 14% 100%, 100% 100%; opacity: 1; } 85% { opacity: .9; } to { -webkit-mask-size: 175% 100%, 100% 100%; mask-size: 175% 100%, 100% 100%; opacity: 0; } }
+
+/* ───────── 10. 資料到位 ─────────
+   市場：最低價那一列（.market-flexrow-best）出現時閃一道金光，價格數字由 ui-motion.js 滾動到定位。
+   潛水艇／飛空艇：結果表出現時表頭掃過一道光（像掃描完成）。 */
+.market-flexrow-best { position: relative; }
+.market-flexrow-best::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 38%, rgba(255,236,170,.38) 50%, transparent 62%);
+  transform: translateX(-125%); animation: mk-glint 1.05s ease-out .15s 1 both;
+}
+@keyframes mk-glint { 0% { transform: translateX(-125%); } 100% { transform: translateX(125%); } }
+.sub-table thead tr {
+  background:
+    linear-gradient(100deg, transparent 40%, rgba(255,236,180,.34) 50%, transparent 60%) -120% 0 / 60% 100% no-repeat,
+    linear-gradient(90deg, rgba(197,160,89,.18), rgba(197,160,89,.07) 85%, rgba(197,160,89,.02)),
+    #0d0a07;
+  animation: tbl-scan 1.25s ease-out .1s 1 both;
+}
+@keyframes tbl-scan { from { background-position: -120% 0, 0 0, 0 0; } to { background-position: 220% 0, 0 0, 0 0; } }
+
+/* 偏好減少動態：以上動態全部關閉，只留靜態外觀 */
+@media (prefers-reduced-motion: reduce) {
+  .scene.active .intro-card2, .scene.active .ic2-seat::after, .scene.active .ic2-seat > svg .sp, .scene.active .ic2-seat > svg .gm,
+  .scene.active .ic2-head .intro-lbl, .scene.active .intro-card2 .intro-val, .scene.active .ic2-seat::before, .scene.active .intro-card2 .plq-out,
+  .intro-card2:hover .ic2-seat::after, .market-flexrow-best::after, .sub-table thead tr,
+  .gl-asm, .gl-asm *, .gl-asm::before, .gl-asm::after,
+  .scene.active .unified-gold-header .cr-title-ic::after, .unified-gold-header .cr-title-ic::after { animation: none !important; }
+  .scene.active .intro-card2 .intro-val { -webkit-mask: none; mask: none; }
+  .market-flexrow-best::after { display: none; }
+}

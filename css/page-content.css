@@ -630,9 +630,15 @@ html[data-nav-mode="top"] .royal-nav {
   transform: none !important;
   width: 100% !important;
   display: grid !important;
-  grid-template-columns: 56px repeat(4, 1fr);
-  grid-template-rows: repeat(2, var(--nav-top-h));
-  grid-auto-rows: var(--nav-top-h);
+  /* --nav-top-cols/--nav-top-rows 由 nav.js 依實際項目數量算好、動態寫入（見 nav.js 的 syncTopNavCols），
+   * 每排會自動分配成不會落單的數量，以後選單項目變多變少都不用再手動改這裡的數字。
+   * 切換鍵（.nav-mode-toggle）要貫穿全部排數（grid-row:1/-1），瀏覽器的「-1」只認「明確寫死的排數」，
+   * 不會去看內容自動長出來的排數，所以這裡改回明確寫死 grid-template-rows（用JS算好的排數），
+   * 不能只靠 grid-auto-rows 讓它自然長，否則切換鍵只會貫穿第1排，其他排會因為切換鍵「沒佔到」而多擠出一格、
+   * 跟第1排對不齊（這正是上一輪的問題）。4/2 只是JS還沒跑之前、或極端情況下的預設值。 */
+  grid-template-columns: 56px repeat(var(--nav-top-cols, 4), 1fr);
+  grid-template-rows: repeat(var(--nav-top-rows, 2), var(--nav-top-h));
+  grid-auto-rows: var(--nav-top-h); /* 保險：萬一JS還沒跑完、算出來的排數暫時不夠，多出來的項目還是有合理高度可用，不會擠成0高 */
   gap: 2px 3px;
   align-items: stretch !important;
   background: rgba(5,4,10,.94) !important;
@@ -645,8 +651,9 @@ html[data-nav-mode="top"] .royal-nav {
 
 @media (min-width: 920px) {
 html[data-nav-mode="top"] .royal-nav {
-    grid-template-columns: 56px repeat(7, 1fr) !important;
-    grid-template-rows: var(--nav-top-h) !important;
+    /* 同上，--nav-top-cols/--nav-top-rows 在寬螢幕這個斷點會用不同的上限（7欄）重新計算 */
+    grid-template-columns: 56px repeat(var(--nav-top-cols, 7), 1fr) !important;
+    grid-template-rows: repeat(var(--nav-top-rows, 2), var(--nav-top-h)) !important;
   }
 }
 
@@ -749,3 +756,525 @@ html[data-nav-mode="top"] .noble-outer-frame {
 .royal-main-title          { font-size: 1.9rem !important; letter-spacing: 7px !important; }.unified-gold-header.small { font-size: 1.1rem !important; letter-spacing: 4px !important; }html[data-nav-mode="top"] .nav-content .cn { font-size: .72rem !important; letter-spacing: 1px !important; }html[data-nav-mode="top"] .nav-item        { padding: 0 9px !important; }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════
+   遠航探索（僅頂部模式）— 對齊修正＋下拉框美術設計
+   ──────────────────────────────────────────────────────────────────
+   【對齊修正】原本 .nav-group > .nav-content 有 padding-right:26px（替左側模式的箭頭留位置），
+   頂部模式也吃到，文字被擠偏 13px；箭頭的位置也是照左側模式 62px 高度寫死的。
+   → 頂部模式取消那個右側留白，箭頭改成「坐在底部金線正中央的小寶石」，文字回到正中央。
+   【下拉框】兩張並排的卡片（比直式清單省高度）：
+   · 雙層金框（外框＋內縮細框，呼應全站 noble frame），頂端小箭頭缺口指向「遠航探索」
+   · 每張卡片：圓形徽章（金色光環）＋中文名／英文小字
+   · 展開時兩張卡片依序浮現；hover 時徽章光環旋轉、卡片上浮、一道金光掃過
+   · 目前所在頁面：金邊＋呼吸光暈；尊重 prefers-reduced-motion
+   · 超出螢幕邊緣時由 app.js 寫入 --sub-shift 自動平移（缺口會補償，仍指著遠航探索）
+   ══════════════════════════════════════════════════════════════════ */
+html[data-nav-mode="top"] .nav-group > .nav-content { padding-right: 0; }
+
+html[data-nav-mode="top"] .nav-group-arrow {
+  left: 50%; right: auto; top: auto; bottom: 2px;
+  transform: translateX(-50%);
+  font-size: .6rem; line-height: 1;
+  color: var(--gold-bright);
+  text-shadow: 0 0 6px rgba(197,160,89,.9);
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-group-arrow { transform: translateX(-50%) rotate(180deg); }
+html[data-nav-mode="top"] .nav-group.nav-open > .nav-glow { opacity: 1; }
+
+html[data-nav-mode="top"] .nav-group .nav-submenu {
+  display: flex;
+  gap: 8px;
+  top: calc(100% + 12px);
+  left: 50%;
+  width: max-content;
+  min-width: 0;
+  padding: 10px;
+  overflow: visible;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(197,160,89,.20), transparent 62%),
+    linear-gradient(180deg, rgba(27,22,14,.97), rgba(10,9,14,.98));
+  border: 1px solid rgba(197,160,89,.6);
+  border-radius: 14px;
+  outline: 1px solid rgba(197,160,89,.2);   /* 內縮細框：雙層金框 */
+  outline-offset: -5px;
+  box-shadow: 0 22px 44px rgba(0,0,0,.7), 0 0 28px rgba(197,160,89,.12), inset 0 1px 0 rgba(255,228,170,.14);
+  transform: translateX(calc(-50% + var(--sub-shift, 0px))) translateY(-8px) scale(.94);
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu {
+  transform: translateX(calc(-50% + var(--sub-shift, 0px))) translateY(0) scale(1);
+}
+
+/* 頂端小箭頭缺口 */
+html[data-nav-mode="top"] .nav-group .nav-submenu::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: calc(50% - var(--sub-shift, 0px));
+  width: 12px; height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  background: rgb(52,41,22);
+  border-top: 1px solid rgba(197,160,89,.6);
+  border-left: 1px solid rgba(197,160,89,.6);
+  box-shadow: -2px -2px 8px rgba(197,160,89,.25);
+}
+/* 隱形橋接：滑鼠從「遠航探索」移向下拉框途中不會因空隙而中斷 hover */
+html[data-nav-mode="top"] .nav-group .nav-submenu::after {
+  content: ""; position: absolute; left: 0; right: 0; top: -16px; height: 16px;
+}
+
+/* ── 卡片 ── */
+html[data-nav-mode="top"] .nav-subitem {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 142px;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba(197,160,89,.26);
+  background: linear-gradient(160deg, rgba(197,160,89,.12), rgba(197,160,89,.02) 70%);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .35s ease, transform .45s cubic-bezier(.19,1,.22,1),
+              border-color .25s ease, box-shadow .3s ease, background .3s ease;
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem { opacity: 1; transform: translateY(0); }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem:nth-child(1) { transition-delay: .07s, .07s, 0s, 0s, 0s; }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem:nth-child(2) { transition-delay: .15s, .15s, 0s, 0s, 0s; }
+
+html[data-nav-mode="top"] .nav-subitem > .nav-glow,
+html[data-nav-mode="top"] .nav-subitem > .nav-ribbon { display: none !important; }
+
+/* 金光掃過 */
+html[data-nav-mode="top"] .nav-subitem::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 38%, rgba(255,228,170,.30) 50%, transparent 62%);
+  transform: translateX(-130%);
+  pointer-events: none;
+}
+
+/* 版面：徽章｜中文名／英文 */
+html[data-nav-mode="top"] .nav-subitem .nav-content {
+  display: grid !important;
+  grid-template-columns: 38px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 11px;
+  row-gap: 1px;
+  width: 100%; height: auto;
+  padding: 9px 14px 9px 10px;
+}
+html[data-nav-mode="top"] .nav-subitem .nav-content .cn {
+  display: contents;               /* 讓徽章與文字直接參與 .nav-content 的格線 */
+  font-size: 1rem;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+html[data-nav-mode="top"] .nav-subitem .nav-content .en {
+  display: block !important;
+  grid-column: 2; grid-row: 2;
+  margin: 0;
+  font-size: .58rem;
+  letter-spacing: 2.5px;
+  opacity: .75;
+  white-space: nowrap;
+}
+
+/* 圓形徽章＋旋轉光環 */
+html[data-nav-mode="top"] .nav-subitem .nav-emoji {
+  grid-column: 1; grid-row: 1 / 3;
+  position: relative;
+  display: grid; place-items: center;
+  width: 38px; height: 38px;
+  font-size: 1.05rem;
+  border-radius: 50%;
+  border: 1px solid rgba(197,160,89,.55);
+  background: radial-gradient(circle at 32% 28%, rgba(255,228,170,.28), rgba(197,160,89,.06) 62%);
+  box-shadow: inset 0 0 8px rgba(197,160,89,.18);
+  transition: box-shadow .3s ease, border-color .3s ease;
+}
+html[data-nav-mode="top"] .nav-subitem .nav-emoji::before {
+  content: "";
+  position: absolute; inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 55%, rgba(255,228,170,.95) 80%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+
+/* hover / 鍵盤聚焦 */
+html[data-nav-mode="top"] .nav-subitem:hover,
+html[data-nav-mode="top"] .nav-subitem:focus-visible {
+  border-color: rgba(255,228,170,.8);
+  background: linear-gradient(160deg, rgba(197,160,89,.26), rgba(197,160,89,.06) 75%);
+  box-shadow: 0 8px 18px rgba(0,0,0,.45), 0 0 16px rgba(197,160,89,.28);
+  transform: translateY(-2px);
+  outline: none;
+}
+html[data-nav-mode="top"] .nav-subitem:hover::before,
+html[data-nav-mode="top"] .nav-subitem:focus-visible::before { transform: translateX(130%); transition: transform .8s ease; }
+html[data-nav-mode="top"] .nav-subitem:hover .nav-emoji,
+html[data-nav-mode="top"] .nav-subitem:focus-visible .nav-emoji { border-color: rgba(255,228,170,.9); box-shadow: 0 0 12px rgba(197,160,89,.55), inset 0 0 8px rgba(197,160,89,.3); }
+html[data-nav-mode="top"] .nav-subitem:hover .nav-emoji::before,
+html[data-nav-mode="top"] .nav-subitem:focus-visible .nav-emoji::before,
+html[data-nav-mode="top"] .nav-subitem.active .nav-emoji::before { opacity: 1; animation: nav-ring-spin 2.4s linear infinite; }
+html[data-nav-mode="top"] .nav-subitem:hover .en { opacity: 1; }
+html[data-nav-mode="top"] .nav-subitem:active { transform: translateY(0) scale(.98); }
+
+/* 目前所在頁面 */
+html[data-nav-mode="top"] .nav-subitem.active {
+  border-color: var(--gold-bright);
+  background: linear-gradient(160deg, rgba(197,160,89,.34), rgba(197,160,89,.08) 75%);
+  animation: nav-sub-breathe 2.8s ease-in-out infinite;
+}
+html[data-nav-mode="top"] .nav-subitem.active .en { opacity: 1; }
+
+@keyframes nav-ring-spin { to { transform: rotate(360deg); } }
+@keyframes nav-sub-breathe {
+  0%, 100% { box-shadow: 0 0 8px rgba(197,160,89,.25); }
+  50%      { box-shadow: 0 0 20px rgba(197,160,89,.55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-nav-mode="top"] .nav-group .nav-submenu,
+  html[data-nav-mode="top"] .nav-subitem,
+  html[data-nav-mode="top"] .nav-subitem::before { transition: none; }
+  html[data-nav-mode="top"] .nav-subitem.active,
+  html[data-nav-mode="top"] .nav-subitem .nav-emoji::before { animation: none !important; }
+}
+
+/* 很窄的手機：卡片縮小一點，確保兩張並排放得下 */
+@media (max-width: 380px) {
+  html[data-nav-mode="top"] .nav-subitem { min-width: 128px; }
+  html[data-nav-mode="top"] .nav-subitem .nav-content { padding: 8px 10px 8px 8px; column-gap: 9px; grid-template-columns: 34px 1fr; }
+  html[data-nav-mode="top"] .nav-subitem .nav-emoji { width: 34px; height: 34px; }
+  html[data-nav-mode="top"] .nav-subitem .nav-content .cn { letter-spacing: 1px; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   手機（窄螢幕）頂部選單：漢堡收合
+   平常只留一條 46px 細列（目前頁面＋☰），點開才展開全部項目，
+   展開時浮在內容上方（不推動內容），選完頁面／點外面／按 Esc 會自動收合。
+   手機固定使用頂部選單，所以模式切換鈕在手機上隱藏。
+   斷點 900 必須與 nav.js 的 BREAKPOINT、index.html 的內聯 script 一致。
+   以 .nav-has-burger 為前提：萬一 index.html 沒一起更新（沒有漢堡按鈕），
+   就不會把項目藏起來，退回原本的版面，不會變成一條空白列。
+   ══════════════════════════════════════════════════════════════════ */
+.nav-burger { display: none; }
+
+@media (max-width: 900px) {
+  html[data-nav-mode="top"] { --nav-top-h: 46px; }
+
+  html[data-nav-mode="top"] .royal-nav.nav-has-burger {
+    /* 6 欄：漢堡列橫跨整排；展開後每個項目佔 2 欄＝每排 3 個 */
+    grid-template-columns: repeat(6, 1fr) !important;
+    grid-template-rows: var(--nav-top-h) !important;
+    grid-auto-rows: var(--nav-top-h);
+    gap: 0 3px;
+  }
+  html[data-nav-mode="top"] .royal-nav.nav-has-burger.nav-menu-open {
+    box-shadow: 0 14px 28px rgba(0,0,0,.55);
+    border-bottom-color: rgba(197,160,89,.5) !important;
+  }
+
+  html[data-nav-mode="top"] .royal-nav.nav-has-burger > .nav-mode-toggle { display: none !important; }
+
+  html[data-nav-mode="top"] .royal-nav.nav-has-burger > .nav-burger {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 100%;
+    min-width: 0;
+    padding: 0 18px;
+    background: none;
+    border: none;
+    color: var(--gold-bright);
+    font-family: "Noto Serif TC", serif;
+    font-weight: 900;
+    font-size: .95rem;
+    letter-spacing: 2px;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(197,160,89,.15);
+  }
+  .nav-burger .nb-icon  { font-size: 22px; line-height: 1; flex-shrink: 0; }
+  .nav-burger .nb-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-burger .nb-caret { color: var(--gold); flex-shrink: 0; transition: transform .3s cubic-bezier(.19,1,.22,1); }
+  .royal-nav.nav-menu-open .nav-burger .nb-caret { transform: rotate(180deg); }
+  .nav-burger:focus-visible { outline: 1px solid var(--gold); outline-offset: -3px; }
+
+  /* 收合時：只留漢堡列；展開時：每個項目佔 2 欄（每排 3 個） */
+  html[data-nav-mode="top"] .royal-nav.nav-has-burger:not(.nav-menu-open) > .nav-item { display: none !important; }
+  html[data-nav-mode="top"] .royal-nav.nav-has-burger > .nav-item { grid-column: span 2; }
+}
+
+
+
+
+
+
+
+
+/* ══════════════════════════════════════════════════════════════════
+   遠航探索 下拉 v10「飾桿」（僅頂部模式；放在檔案最末，覆蓋上面舊版）
+   ──────────────────────────────────────────────────────────────────
+   面板內容、粒子、波紋、角標、選項樣式、邊緣流光沿用 v5~v9。本版改動：
+   1) 過渡空間縮到最薄：不再有吊鏈／28px 飾帶。面板上緣只比主選單底線低約 7px，使用者視線幾乎不用移動
+   2) 過渡改為「裝飾性橫桿」：一條細而半透明的金色飾桿（高 7px），兩端漸隱，不是硬邦邦的實心桿；
+      桿上只有低調的細節——微弱的珠點、兩端小珠、中央一枚小菱形扣飾——焦點仍在子選單本身
+   3) 移除展開時由接縫「噴出」的那一把光點（其餘金色粒子照舊）
+   4) 邊緣流光改用 canvas：一段「漸細的柔和彗尾」沿邊框等速流動（光頭從上緣中央的扣飾出發），始終可見、不會忽明忽滅
+   ══════════════════════════════════════════════════════════════════
+@property --nav-ang { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+
+/* 裝飾元件由 app.js 動態塞進 .nav-submenu；左側模式不需要 */
+.nav-sub-fx, .nav-sub-thread, .nav-sub-sep { display: none; }
+
+html[data-nav-mode="top"] .nav-group .nav-submenu {
+  display: flex; flex-direction: column; gap: 0;
+  top: calc(100% - 3px);                              /* 面板上緣與飾桿下緣相接；底線在項目底部上方 9px，桿厚 7px */
+  width: 176px; min-width: 0;
+  padding: 8px 8px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(197,160,89,.5);
+  outline: 1px solid rgba(197,160,89,.14);
+  outline-offset: -5px;
+  background:
+    radial-gradient(90% 60% at 50% 0%, rgba(252,246,186,.12), transparent 70%),
+    linear-gradient(180deg, rgba(24,19,12,.97), rgba(7,6,11,.985));
+  box-shadow: 0 16px 34px rgba(0,0,0,.65), 0 0 24px rgba(197,160,89,.12), inset 0 1px 0 rgba(255,228,170,.18);
+  transform-origin: 50% -8px;                        /* 以吊軌（底線高度）為原點向下長出 */
+  transform: translateX(calc(-50% + var(--sub-shift, 0px))) translateY(-6px) scaleY(.92);
+  clip-path: inset(0 0 100% 0);
+  opacity: 0;
+  transition:
+    opacity .22s ease,
+    transform .26s cubic-bezier(.4,0,.6,1),
+    clip-path .26s cubic-bezier(.4,0,.6,1),
+    visibility 0s linear .26s;
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu {
+  transform: translateX(calc(-50% + var(--sub-shift, 0px))) translateY(0) scaleY(1);
+  clip-path: inset(-40px -40px -60px -40px);        /* 展開後不裁切，外發光與粒子才看得到 */
+  opacity: 1; animation: none;
+  transition:
+    opacity .3s ease,
+    transform .55s cubic-bezier(.22,1,.36,1),
+    clip-path .55s cubic-bezier(.22,1,.36,1),
+    visibility 0s linear 0s;
+}
+
+/* 邊緣流光：改由 app.js 以 <canvas> 繪製（見 .nav-sub-comet）。
+   原本的 conic-gradient 旋轉環在長方形邊框上速度不均（角落加速、邊中段變慢），
+   且整圈低對比漸變看起來像「忽明忽暗」而不是「一段光在流動」，故停用。 */
+html[data-nav-mode="top"] .nav-group .nav-submenu::before { content: none; }
+html[data-nav-mode="top"] .nav-sub-comet {
+  position: absolute; left: -6px; top: -6px; z-index: 3; pointer-events: none;
+  opacity: 0; transition: opacity .5s ease;
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-comet { opacity: 1; transition-delay: .1s; }
+html[data-nav-mode="left"] .nav-sub-comet { display: none; }
+
+/* 隱形橋接：涵蓋飾桿與底線之間的高度，滑鼠從父項目移向面板不會中斷 */
+html[data-nav-mode="top"] .nav-group .nav-submenu::after { top: -14px; height: 14px; }
+
+/* ── 飾桿：細、淡、兩端漸隱的裝飾性橫桿 ──
+   .nav-sub-thread 寬＝面板＋左右各 18px、高 12px，單一 SVG 背景：
+   桿身（上緣高光、下緣微亮邊、上下漸層，左右兩端漸隱）＋微弱珠點＋兩端小珠＋中央小菱形扣飾。
+   桿在底線高度（項目底部上方 9~10px 起、厚 7px），下緣與面板上緣相接。 */
+html[data-nav-mode="top"] .nav-sub-thread {
+  display: block !important; position: absolute; z-index: 4; pointer-events: none;
+  top: -10px; height: 12px; left: -18px; right: -18px; width: auto; transform: none;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='212' height='12' viewBox='0 0 212 12'><defs><linearGradient id='hf' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='212' y2='0'><stop offset='0' stop-color='white' stop-opacity='0'/><stop offset='.12' stop-color='white' stop-opacity='1'/><stop offset='.88' stop-color='white' stop-opacity='1'/><stop offset='1' stop-color='white' stop-opacity='0'/></linearGradient><mask id='m'><rect width='212' height='12' fill='url(%23hf)'/></mask><linearGradient id='vg' gradientUnits='userSpaceOnUse' x1='0' y1='2' x2='0' y2='9'><stop offset='0' stop-color='%23fce4aa' stop-opacity='.55'/><stop offset='.3' stop-color='%23c5a059' stop-opacity='.34'/><stop offset='.7' stop-color='%238a6a32' stop-opacity='.26'/><stop offset='1' stop-color='%23c5a059' stop-opacity='.42'/></linearGradient><linearGradient id='cg' gradientUnits='userSpaceOnUse' x1='99' y1='0' x2='113' y2='0'><stop offset='0' stop-color='%23c5a059'/><stop offset='.5' stop-color='%23fce4aa'/><stop offset='1' stop-color='%23c5a059'/></linearGradient></defs><g mask='url(%23m)'><rect x='0' y='2' width='212' height='7' fill='url(%23vg)'/><rect x='0' y='2' width='212' height='.8' fill='%23fff6d6' fill-opacity='.5'/><circle cx='24' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='30' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='36' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='42' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='48' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='54' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='60' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='66' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='72' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='78' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='84' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='124' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='130' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='136' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='142' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='148' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='154' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='160' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='166' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='172' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='178' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/><circle cx='184' cy='5.5' r='.7' fill='%23fff0c8' fill-opacity='.34'/></g><circle cx='9' cy='5.5' r='2.9' fill='none' stroke='%23fce4aa' stroke-opacity='.4' stroke-width='.7'/><circle cx='9' cy='5.5' r='1.5' fill='%23fff0c8' fill-opacity='.75'/><circle cx='203' cy='5.5' r='2.9' fill='none' stroke='%23fce4aa' stroke-opacity='.4' stroke-width='.7'/><circle cx='203' cy='5.5' r='1.5' fill='%23fff0c8' fill-opacity='.75'/><path d='M89 5.5 H97 M115 5.5 H123' stroke='%23fce4aa' stroke-opacity='.55' stroke-width='.7'/><path d='M85 4.2 l1.3 1.3 l-1.3 1.3 l-1.3 -1.3Z M127 4.2 l1.3 1.3 l-1.3 1.3 l-1.3 -1.3Z' fill='%23fce4aa' fill-opacity='.6'/><path d='M106 .4 L112.4 5.5 L106 10.6 L99.6 5.5Z' fill='%23120e08' fill-opacity='.92' stroke='url(%23cg)' stroke-width='.8'/><path d='M106 2.8 L109.6 5.5 L106 8.2 L102.4 5.5Z' fill='%23fce4aa' fill-opacity='.9'/></svg>") 50% 0 / 100% 100% no-repeat;
+  filter: drop-shadow(0 0 3px rgba(197,160,89,.28));
+  opacity: 0; transition: opacity .45s ease;
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-thread {
+  opacity: 1; transition-delay: .05s;
+  animation: nav-rod-in .7s cubic-bezier(.22,1,.36,1) both;     /* 由中心淡入並拉寬（柔和，無硬邊） */
+}
+@keyframes nav-rod-in { from { scale: .6 1; } to { scale: 1 1; } }
+/* 扣飾後方一圈極淡的呼吸光（不移動，只有明暗） */
+html[data-nav-mode="top"] .nav-sub-thread::before {
+  content: ""; position: absolute; left: calc(50% - var(--sub-shift, 0px) - 22px); top: -1px; width: 44px; height: 14px;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255,232,176,.28), transparent 70%); opacity: 0;
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-thread::before { animation: nav-rod-breath 3.6s ease-in-out infinite .6s; }
+html[data-nav-mode="top"] .nav-sub-thread::after { content: none; }
+@keyframes nav-rod-breath { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+
+/* 展開時，父項目的小箭頭收起，避免與飾帶中央的菱飾重疊 */
+html[data-nav-mode="top"] .nav-group-arrow { transition: opacity .25s ease; }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-group-arrow { opacity: 0; }
+
+/* ── 裝飾層（不擋點擊） ── */
+html[data-nav-mode="top"] .nav-sub-fx {
+  display: block; position: absolute; inset: 0; z-index: 0;
+  border-radius: 6px; overflow: hidden; pointer-events: none;
+}
+/* 流動波紋：只佔最底部 12px 的細帶（面板底部內距區），不會壓到選項 */
+html[data-nav-mode="top"] .nav-sub-fx i {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 12px;
+  background-repeat: repeat-x; background-position: 0 100%;
+}
+html[data-nav-mode="top"] .nav-sub-fx i:nth-child(1) {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='12' viewBox='0 0 80 12'><path d='M0 7 Q20 1 40 7 T80 7 V12 H0Z' fill='rgba(197,160,89,0.12)'/><path d='M0 7 Q20 1 40 7 T80 7' fill='none' stroke='rgba(252,228,170,0.42)' stroke-width='1'/></svg>");
+  background-size: 80px 12px;
+  animation: nav-wave 7s linear infinite;
+}
+html[data-nav-mode="top"] .nav-sub-fx i:nth-child(2) {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='12' viewBox='0 0 56 12'><path d='M0 8 Q14 3 28 8 T56 8' fill='none' stroke='rgba(252,228,170,0.24)' stroke-width='1'/></svg>");
+  background-size: 56px 12px;
+  animation: nav-wave2 5s linear infinite;
+}
+@keyframes nav-wave  { to { background-position: 80px 100%; } }
+@keyframes nav-wave2 { to { background-position: -56px 100%; } }
+/* 斜向光帶（輕柔，週期性掃過） */
+html[data-nav-mode="top"] .nav-sub-fx::before {
+  content: ""; position: absolute; top: -20%; bottom: -20%; width: 40%; left: -50%;
+  background: linear-gradient(105deg, transparent, rgba(255,236,190,.10) 45%, rgba(255,255,255,.15) 50%, rgba(255,236,190,.10) 55%, transparent);
+  transform: skewX(-12deg);
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-fx::before { animation: nav-sheen 6s ease-in-out infinite .8s; }
+@keyframes nav-sheen { 0% { left: -50%; } 40%, 100% { left: 130%; } }
+/* 四角金色角標 */
+html[data-nav-mode="top"] .nav-sub-fx::after {
+  content: ""; position: absolute; inset: 3px; --c: var(--gold-bright);
+  background:
+    linear-gradient(var(--c), var(--c)) 0 0 / 8px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) 0 0 / 1px 8px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 8px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 0 / 1px 8px no-repeat,
+    linear-gradient(var(--c), var(--c)) 0 100% / 8px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) 0 100% / 1px 8px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 8px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) 100% 100% / 1px 8px no-repeat;
+  opacity: .75; filter: drop-shadow(0 0 3px rgba(255,228,170,.55));
+}
+
+/* 兩列之間的分隔：細線＋小寶石（橫向） */
+html[data-nav-mode="top"] .nav-sub-sep {
+  display: block; position: absolute; z-index: 1; pointer-events: none;
+  left: 14%; right: 14%; top: calc(50% - 4px); height: 1px; width: auto; bottom: auto;
+  background: linear-gradient(90deg, transparent, rgba(197,160,89,.6) 30%, rgba(197,160,89,.6) 70%, transparent);
+}
+html[data-nav-mode="top"] .nav-sub-sep::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
+  transform: translate(-50%,-50%) rotate(45deg);
+  background: var(--gold-bright); box-shadow: 0 0 7px 2px rgba(197,160,89,.75);
+  animation: nav-gem-pulse 2.6s ease-in-out infinite;
+}
+@keyframes nav-gem-pulse { 0%,100% { opacity: .6; } 50% { opacity: 1; box-shadow: 0 0 10px 3px rgba(255,228,170,.9); } }
+
+/* ── 選項：直式兩列，沒有「按鈕框」 ── */
+html[data-nav-mode="top"] .nav-subitem {
+  --acc: 252,228,170;
+  position: relative; z-index: 1;
+  flex: none; width: 100%; min-width: 0; height: auto; margin: 0;
+  border: none; border-radius: 4px; background: transparent; overflow: hidden;
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity .35s ease, transform .5s cubic-bezier(.22,1,.36,1), background .3s ease;
+}
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem { opacity: 1; transform: translateY(0); }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem:nth-child(1) { transition-delay: .08s, .08s, 0s; }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem:nth-child(2) { transition-delay: .16s, .16s, 0s; }
+html[data-nav-mode="top"] .nav-subitem[data-nav="submarine"] { --acc: 110,205,235; }
+html[data-nav-mode="top"] .nav-subitem[data-nav="airship"]   { --acc: 255,232,176; }
+
+html[data-nav-mode="top"] .nav-subitem .nav-content {
+  display: grid !important;
+  grid-template-columns: 30px 1fr; grid-template-rows: auto auto;
+  align-items: center; column-gap: 11px; row-gap: 0;
+  width: 100%; height: auto; padding: 6px 14px 6px 10px;
+}
+html[data-nav-mode="top"] .nav-subitem .nav-content .cn { display: contents; font-size: .98rem; letter-spacing: 2px; white-space: nowrap; }
+html[data-nav-mode="top"] .nav-subitem .nav-content .en {
+  display: block !important; grid-column: 2; grid-row: 2; margin: 0;
+  font-size: .54rem; letter-spacing: 2.4px; opacity: .75; white-space: nowrap;
+}
+
+/* 光柱（hover / 目前頁面）＋底線 */
+html[data-nav-mode="top"] .nav-subitem::before {
+  inset: 0; transform: none;
+  background: radial-gradient(80% 140% at 50% 125%, rgba(var(--acc),.32), rgba(var(--acc),.07) 55%, transparent 78%);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+          mask: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  opacity: 0; transition: opacity .45s ease;
+}
+html[data-nav-mode="top"] .nav-subitem::after {
+  content: ""; position: absolute; left: 12%; right: 12%; bottom: 2px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--acc),.9), transparent);
+  box-shadow: 0 0 7px rgba(var(--acc),.65);
+  transform: scaleX(.2); opacity: 0;
+  transition: transform .5s cubic-bezier(.22,1,.36,1), opacity .4s ease;
+}
+html[data-nav-mode="top"] .nav-subitem:hover,
+html[data-nav-mode="top"] .nav-subitem:focus-visible { background: transparent; border: none; box-shadow: none; outline: none; }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem:hover,
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem:focus-visible { transform: translateX(2px); }
+html[data-nav-mode="top"] .nav-subitem:hover::before,
+html[data-nav-mode="top"] .nav-subitem:focus-visible::before { opacity: 1; transform: none; transition: opacity .45s ease; }
+html[data-nav-mode="top"] .nav-subitem.active::before { opacity: .6; }
+html[data-nav-mode="top"] .nav-subitem:hover::after,
+html[data-nav-mode="top"] .nav-subitem:focus-visible::after,
+html[data-nav-mode="top"] .nav-subitem.active::after { transform: scaleX(1); opacity: 1; }
+html[data-nav-mode="top"] .nav-subitem.active { background: transparent; border: none; animation: none; }
+html[data-nav-mode="top"] .nav-subitem:active { transform: scale(.98); }
+
+/* 徽章（縮小為 30px） */
+html[data-nav-mode="top"] .nav-subitem .nav-emoji {
+  grid-column: 1; grid-row: 1 / 3;
+  width: 30px; height: 30px; font-size: .88rem;
+  border-color: rgba(var(--acc),.55);
+  background: radial-gradient(circle at 32% 28%, rgba(var(--acc),.30), rgba(var(--acc),.05) 65%);
+  box-shadow: inset 0 0 7px rgba(var(--acc),.22);
+  transition: box-shadow .35s ease, border-color .3s ease, transform .5s cubic-bezier(.22,1,.36,1);
+}
+html[data-nav-mode="top"] .nav-subitem .nav-emoji::before {
+  inset: -3px;
+  background: conic-gradient(from 0deg, transparent 0 50%, rgba(var(--acc),.95) 80%, transparent 100%);
+}
+html[data-nav-mode="top"] .nav-subitem:hover .nav-emoji,
+html[data-nav-mode="top"] .nav-subitem:focus-visible .nav-emoji {
+  transform: scale(1.08); border-color: rgba(var(--acc),.95);
+  box-shadow: 0 0 13px 2px rgba(var(--acc),.5), inset 0 0 9px rgba(var(--acc),.35);
+}
+/* 徽章圖示輕輕漂浮 */
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem[data-nav="submarine"] .nav-emoji { animation: nav-bob 3.4s ease-in-out infinite; }
+html[data-nav-mode="top"] .nav-group.nav-open .nav-subitem[data-nav="airship"]   .nav-emoji { animation: nav-drift 4.2s ease-in-out infinite; }
+@keyframes nav-bob   { 0%,100% { translate: 0 1.5px; } 50% { translate: 0 -2px; } }
+@keyframes nav-drift { 0%,100% { translate: -1.5px 0; } 50% { translate: 2px -1.5px; } }
+
+/* 面板內粒子：在選項「後面」 */
+.nav-submenu > .nav-sub-spark { z-index: 0; }
+
+/* 左側模式完全沿用舊版 */
+html[data-nav-mode="left"] .nav-sub-fx,
+html[data-nav-mode="left"] .nav-sub-thread,
+html[data-nav-mode="left"] .nav-sub-sep { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-nav-mode="top"] .nav-group .nav-submenu,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu,
+  html[data-nav-mode="top"] .nav-subitem { transition: none !important; }
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu::before,
+  html[data-nav-mode="top"] .nav-sub-fx i,
+  html[data-nav-mode="top"] .nav-sub-fx::before,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu::before,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-submenu::before,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-thread,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-thread::before,
+  html[data-nav-mode="top"] .nav-group.nav-open .nav-sub-thread::after,
+  html[data-nav-mode="top"] .nav-sub-sep::after,
+  html[data-nav-mode="top"] .nav-subitem .nav-emoji { animation: none !important; }
+}
