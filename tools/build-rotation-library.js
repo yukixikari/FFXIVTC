@@ -7,12 +7,15 @@
  *   ・前一輪找到的手法會當下一輪的種子，所以越跑越好，也可以重複執行來持續改進（已有的手法會保留）
  * 只存技能序列，不存任何玩家數值；網站載入後會用模擬精確反推每套手法需要的數值。
  *
- * 用法：node tools/build-rotation-library.js [--min-rlvl 580] [--budget 6000] [--shard 0/4] [--only 5586,5597] [--out data/craft-rotation-library.json]
+ * 集束搜尋（strategy:'beam'，見 js/craft-exact.js）也會在每個參考點各跑一次當候選來源：離線可以給它很大的運算量與更寬的集束（--beam-budget、--beam-widths），
+ * 找到的手法跟遺傳演算法找到的一起進入「互不被壓過」的篩選，所以庫只會更好。--beam-budget 0 可關閉。
+ * 用法：node tools/build-rotation-library.js [--min-rlvl 580] [--max-rlvl 99999] [--budget 6000] [--beam-budget 60000000] [--beam-widths 4000,12000,30000] [--shard 0/4] [--only 5586,5597] [--out data/craft-rotation-library.json]
  *       node tools/build-rotation-library.js --merge a.json b.json ... --out data/craft-rotation-library.json */
 const fs = require('fs'), path = require('path');
 const { makeWorker } = require('./node-worker-host');
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : def; };
+const BEAM_BUDGET = +opt('beam-budget', 60e6), BEAM_WIDTHS = String(opt('beam-widths', '4000,12000,30000')).split(',').map(Number);
 const OUT = path.resolve(opt('out', path.join(__dirname, '..', 'data', 'craft-rotation-library.json')));
 
 function load(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return { v: 1, actions: [], shapes: {} }; } }
@@ -34,13 +37,15 @@ if (args.includes('--merge')) {
 (async () => {
   const w = makeWorker({ library: false });
   const R = w.recipes();
-  const minRlvl = +opt('min-rlvl', 580), budget = +opt('budget', 6000);
+  const minRlvl = +opt('min-rlvl', 580), maxRlvl = +opt('max-rlvl', 99999), budget = +opt('budget', 6000);
   const [si, sn] = String(opt('shard', '0/1')).split('/').map(Number);
+  const beamOnly = args.includes('--beam-only'); // 快速模式：只用集束搜尋在一組參考數值點產生手法（不跑遺傳演算法與反推），每個形狀約 1～2 分鐘
+  const limit = +opt('limit', 0), maxMinutes = +opt('max-minutes', 0), startedAt = Date.now(); // limit：只處理每個分片的前 N 個形狀（測試用）；max-minutes：超過就不再開始新的形狀（避免被 GitHub 的時限強制中斷）
   const only = opt('only', null) ? String(opt('only')).split(',') : null;
   // 依形狀分組，挑代表配方：HQ 材料最多的一個（算「全 HQ」起始品質）與完全沒有 HQ 的設定
   const shapes = new Map();
   Object.keys(R).forEach((id) => {
-    const r = R[id]; if (r.rlvl < minRlvl || !(r.quality > 0)) return;
+    const r = R[id]; if (r.rlvl < minRlvl || r.rlvl > maxRlvl || !(r.quality > 0)) return;
     const k = w.shapeKeyOf(r); const hqSum = (r.ingredients || []).filter((i) => i.quality > 0).reduce((s, i) => s + i.amount * i.quality, 0);
     const cur = shapes.get(k); if (!cur) shapes.set(k, { id, hqSum, rec: r, count: 1 }); else { cur.count++; if (hqSum > cur.hqSum) { cur.id = id; cur.hqSum = hqSum; cur.rec = r; } }
   });
@@ -48,10 +53,14 @@ if (args.includes('--merge')) {
   let keys = Array.from(shapes.keys()).sort((a, b) => shapes.get(b).count - shapes.get(a).count || (a < b ? -1 : 1));
   if (only) { const want = new Set(only.map((id) => R[id] && w.shapeKeyOf(R[id])).filter(Boolean)); keys = keys.filter((k) => want.has(k)); } // --only 指定的是配方 id，實際比對的是它的「形狀」
   keys = keys.filter((_, i) => i % sn === si);
+  if (limit > 0) keys = keys.slice(0, limit);
   const lib = load(OUT); const existing = decodeAll(lib); const result = {};
   console.log('shapes to process:', keys.length, '(shard', si + '/' + sn + ', budget', budget, 'ms per search)');
+  let okCount = 0, failCount = 0;
   for (const k of keys) {
+    if (maxMinutes > 0 && (Date.now() - startedAt) / 60000 > maxMinutes) { console.log('已達時間上限 ' + maxMinutes + ' 分鐘，剩下的形狀留到下一次執行'); break; }
     const { id, rec } = shapes.get(k);
+    try {
     const hqAll = (rec.ingredients || []).filter((i) => i.quality > 0).map((i) => ({ id: i.id, amount: i.amount }));
     const variants = [[]].concat(hqAll.length ? [hqAll] : []);
     const S0 = rec.suggestedCraftsmanship > 0 ? rec.suggestedCraftsmanship : Math.max(400, 6.5 * rec.rlvl);
@@ -66,6 +75,22 @@ if (args.includes('--merge')) {
     const refOf = (sv, ctr, third) => ({ craftsmanship: sv, control: ctr * sv, cp: isExpert ? cpFormula(sv) * third : cpFormula(sv) + third });
     let pool = (existing[k] || []).slice();
     const t0 = Date.now();
+    if (beamOnly) {
+      const hqv = hqAll.length ? hqAll : [], pts = [], list = [], seenSig = new Set();
+      REFS.forEach(function (r) { const sv = S0 * r[0], c = refOf(sv, r[1], r[2]); pts.push({ craftsmanship: Math.round(sv), control: Math.round(c.control), cp: Math.round(c.cp) }); });
+      [0.45, 0.6, 0.75, 0.9].forEach(function (f) { const sv = S0 * f; pts.push({ craftsmanship: Math.round(sv), control: Math.round((isExpert ? 0.75 : 0.905) * sv), cp: Math.round(isExpert ? cpFormula(sv) * 2.0 : cpFormula(sv)) }); });
+      for (const pt of pts) {
+        const bst = Object.assign({ jobId: rec.jobId, level: 100 }, pt);
+        const b = await w.send({ type: 'solve', recipeId: id, stats: bst, options: { strategy: 'beam', lang: 'tw', hqIngredients: hqv, beamMaxExpand: BEAM_BUDGET, beamWidths: BEAM_WIDTHS, beamRealCapMs: 600000 } });
+        const bk = b.ok && b.result && b.result.actionKeys, sig = bk && bk.join(',');
+        if (bk && bk.length && !seenSig.has(sig)) { seenSig.add(sig); list.push(bk); }
+      }
+      result[k] = list;
+      console.log('shape of recipe', id, 'rlvl', rec.rlvl, '->', list.length, 'rotations kept (beam-only),', Math.round((Date.now() - t0) / 1000) + 's');
+      const outB = { v: 1, actions: [], shapes: {} }; encode(outB, Object.assign({}, existing, result)); fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(outB));
+      okCount++;
+      continue;
+    }
     for (const hq of variants) {
       // 參考點：不同強度 × 不同的加工／CP 比重。玩家的配置不一定貼近設計者比例（例如裝備不齊、某一項特別低），
       // 所以庫要涵蓋「加工偏低」「加工偏高」「CP 偏多／偏少」等不同取向，不能只集中在比例附近
@@ -74,6 +99,11 @@ if (args.includes('--merge')) {
         const r = await w.send({ type: 'frontier', recipeId: id, stats: { jobId: rec.jobId, level: 100 }, ref: refOf(sv, ctr, third),
           goal: 'full', qGoal: rec.quality, hq, budgetMs: budget, seed: Math.round(f * 100 + ctr * 10), libKeys: pool.slice(0, 12), seedKeysList: pool.slice(0, 6) });
         if (r.ok && r.result.cands) r.result.cands.forEach((c) => pool.push(c.keys));
+        if (BEAM_BUDGET > 0) { // 集束搜尋：在這個參考數值下直接找手法（不靠隨機），結果也進候選池
+          const bs = { jobId: rec.jobId, level: 100, craftsmanship: Math.round(sv), control: Math.round(ctr * sv), cp: Math.round(isExpert ? cpFormula(sv) * third : cpFormula(sv) + third) };
+          const b = await w.send({ type: 'solve', recipeId: id, stats: bs, options: { strategy: 'beam', lang: 'tw', hqIngredients: hq, beamMaxExpand: BEAM_BUDGET, beamWidths: BEAM_WIDTHS, beamRealCapMs: 600000 } });
+          if (b.ok && b.result && b.result.actionKeys && b.result.actionKeys.length) pool.push(b.result.actionKeys);
+        }
       }
     }
     // 篩選：在每種起始品質下各自只留互不被壓過的手法
@@ -109,11 +139,20 @@ if (args.includes('--merge')) {
           options: { lang: 'tw', trials: 3, populationSize: 150, generations: 40, hqIngredients: hq, fixedPrefix: [], libraryFast: false, relaxTighten: false } });
         const ak = r.ok && r.result && r.result.actionKeys; const sig = ak && ak.join(',');
         if (ak && ak.length && !qSeen.has(sig)) { qSeen.add(sig); result[k].push(ak); }
+        if (BEAM_BUDGET > 0) {
+          const bst = { jobId: rec.jobId, level: 100, craftsmanship: Math.round(sv), control: Math.round((isExpert ? 0.75 : 0.905) * sv), cp: Math.round(isExpert ? cpFormula(sv) * 2.0 : cpFormula(sv)) };
+          const b = await w.send({ type: 'solve', recipeId: id, stats: bst, options: { strategy: 'beam', lang: 'tw', hqIngredients: hq, beamMaxExpand: BEAM_BUDGET, beamWidths: BEAM_WIDTHS, beamRealCapMs: 600000 } });
+          const bk = b.ok && b.result && b.result.actionKeys; const bsig = bk && bk.join(',');
+          if (bk && bk.length && !qSeen.has(bsig)) { qSeen.add(bsig); result[k].push(bk); }
+        }
       }
     }
     console.log('shape of recipe', id, 'rlvl', rec.rlvl, '->', result[k].length, 'rotations kept,', Math.round((Date.now() - t0) / 1000) + 's');
     // 每完成一種形狀就寫檔，中斷也不會白做
     const out = { v: 1, actions: [], shapes: {} }; encode(out, Object.assign({}, existing, result)); fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(out));
+    okCount++;
+    } catch (e) { failCount++; delete result[k]; console.log('略過這個形狀（配方 ' + id + '）：' + (e && e.stack || e)); } // 單一形狀出錯不影響其他形狀
   }
-  console.log('done ->', OUT);
-})();
+  console.log('done ->', OUT, '| 成功', okCount, '個形狀 | 略過', failCount, '個');
+  if (okCount === 0 && keys.length > 0) process.exit(1); // 全部都失敗才算失敗
+})().catch((e) => { console.error('求解庫產生工具發生錯誤：', e && e.stack || e); process.exit(1); });

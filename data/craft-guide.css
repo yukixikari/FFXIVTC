@@ -1,0 +1,27 @@
+/* craft-guide.css — 生產頁「下一步」光引導（js/craft-guide-light.js）
+ * 語彙跟選單指示光（nav-royal.css 的 .nrp-ind）一致：金色、screen 混合、緩緩滑行（.85s、同一條曲線）。
+ * 平常不存在於畫面上；只有「下一步改變」時滑過去、繞目標邊框一圈、淡出。 */
+.cgl-glow {
+  position: fixed; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+  pointer-events: none; z-index: 9998; opacity: 0; mix-blend-mode: screen;
+  transition: transform .85s cubic-bezier(.22,1,.36,1), opacity .45s ease;
+  background: radial-gradient(circle at 50% 50%, rgba(255,250,230,.95) 0 2px, rgba(255,232,176,.5) 6px, rgba(252,228,170,.18) 16px, transparent 22px);
+}
+.cgl-glow.on { opacity: 1; }
+
+.cgl-lap { position: fixed; pointer-events: none; z-index: 9998; mix-blend-mode: screen; animation: cgl-wrap 1.5s ease-out forwards; }
+.cgl-lap svg { display: block; overflow: visible; }
+.cgl-lap rect {
+  fill: none; stroke: rgba(255,236,185,.95); stroke-width: 2; stroke-linecap: round;
+  stroke-dasharray: 14 86; stroke-dashoffset: 14;
+  filter: drop-shadow(0 0 4px rgba(255,226,150,.9));
+  animation: cgl-run 1.25s cubic-bezier(.4,.1,.3,1) forwards;
+}
+@keyframes cgl-run { from { stroke-dashoffset: 14; } to { stroke-dashoffset: -86; } }
+@keyframes cgl-wrap { 0% { opacity: 0; } 8% { opacity: 1; } 78% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 減少動態效果：不滑行、不繞圈，只讓目標的邊框柔和亮一下 */
+.cgl-lap.cgl-still { animation: none; }
+.cgl-lap.cgl-still rect { stroke-dasharray: none; stroke-dashoffset: 0; animation: cgl-pulse .9s ease-out forwards; }
+@keyframes cgl-pulse { 0% { opacity: 0; } 35% { opacity: .9; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cgl-glow { display: none; } }
