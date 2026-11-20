@@ -17,7 +17,16 @@ importScripts('vendor/ffxiv-simulator.umd.js');
 importScripts('craft-clock.js'); // 虛擬時鐘：讓求解結果可重現
 importScripts('craft-solver-ga.js');
 importScripts('craft-frontier.js'); // 反推「最低所需數值」
-importScripts('craft-data.js'); // 提供 CRAFT_RECIPES / CRAFT_ITEM_NAMES_TW
+importScripts('craft-sim-fast.js'); // 精簡模擬器（安全模式＋線性）：集束搜尋的底層
+importScripts('craft-exact.js'); // 分層集束搜尋引擎（strategy:'beam' 使用）
+/* 配方資料（craft-data.js，約 9 MB、載入後佔數十 MB）不再於啟動時載入：網頁端送訊息時會把「這一個配方」直接附在 msg.recipe 裡，
+ * Worker 只需要那一個配方。每多開一個 Worker 就少載入一份整個配方庫，記憶體與啟動時間都大幅下降，求解結果完全不變
+ * （附帶的配方物件跟配方庫裡的是同一份資料）。沒附配方的呼叫端（離線腳本、舊程式）會自動退回到「第一次需要時才載入整份資料」，行為跟以前一樣。 */
+function getRecipe(id, inline) {
+  if (inline) return inline;
+  if (typeof CRAFT_RECIPES === 'undefined') importScripts('craft-data.js');
+  return CRAFT_RECIPES[id];
+}
 importScripts('craft-action-names.js'); // 提供 CRAFT_ACTION_NAMES_BY_GAME_ID（game id -> 多語言名稱）
 
 /* 把「game id -> 名稱」轉成「模擬引擎技能鍵名(如 BasicSynthesis) -> 名稱」，
@@ -426,7 +435,7 @@ function solveWithMitigations(craft, crafterStats, options, onProgress) {
       try {
         Math.random = mulberry32((baseSeed + 7000) >>> 0);
         const sv = new CraftSolverGA(craft, crafterStats, { populationSize: 60, generations: 10, hqTarget: options.hqTarget || 90, hqIngredients: options.hqIngredients || [], safeMode: options.safeMode,
-          seeds: [best.rotation], deadline: CraftClock.now() + 900, collectableGoal: options.collectableGoal });
+          seeds: [best.rotation], deadline: CraftClock.now() + 900, collectableGoal: options.collectableGoal, fixedPrefix: actionsFromKeysGlobal(prefixKeys) });
         const rot = sv.ils(best.rotation, 800);
         const evp = evaluateRotation(craft, rot, crafterStats, options.hqIngredients, options.safeMode, options.collectableGoal);
         const scp = scoreOf(evp);
@@ -457,6 +466,136 @@ function solveWithMitigations(craft, crafterStats, options, onProgress) {
     pipelineInfo: options.debug ? pipelineInfo : undefined,
     phaseLog: options.debug ? phaseLog : undefined,
     libHit: !!libHit,
+  };
+}
+
+
+/* ---------- 集束搜尋流程（strategy:'beam'）----------
+ * 跟遺傳演算法完全不同的搜尋方式（見 craft-exact.js）：系統性地一步一步展開，不靠隨機運氣。
+ * 做法：由窄到寬逐步加大集束寬度（先用小寬度快速拿到一個好結果，再用更寬的去追更好的），每個寬度跑幾組不同的評價權重；
+ * 運算量用「展開的節點數」限制（不是時間），所以結果在任何裝置上都一樣、可重現。
+ * 找到的每一個候選手法都先用 vendor 模擬器（跟網站其他地方完全相同的評分方式）重算，再用既有的局部精修整理一次。
+ * 只支援「安全模式、沒有固定前綴、沒有品質階梯目標」的求解（其餘情況回傳 null，由其他策略負責）。
+ * 這條流程只是「多一個候選來源」：網頁端會跟其他策略的結果一起比較、取最好的，所以不可能讓結果變差。 */
+const BEAM_WIDTHS = [2500, 7000, 16000];
+const BEAM_VARIANTS = [{ dur: 0.6, buff: 0.6 }, { dur: 0.4, buff: 0.4 }, { cp: 0.6 }, { cp: 0.4, dur: 0.6 }];
+function betterEval(craft, options, a, b) { // 排序：成功 > 優質率（收藏品則為收藏度，上限為目標）> 品質 > 步數；a 比 b 好才回傳 true
+  if (!b) return true;
+  if (!!a.success !== !!b.success) return !!a.success;
+  if (!a.success) { // 都沒成功：先看哪個「做完了進度」（數值不足的專家配方常見：進度完成但品質達不到門檻），再比品質、步數
+    const fa = a.progression >= craft.progress, fb = b.progression >= craft.progress;
+    if (fa !== fb) return fa;
+    if (!fa) return a.progression > b.progression;
+    const cap0 = craft.quality > 0 ? craft.quality : Infinity, qa0 = Math.min(a.quality, cap0), qb0 = Math.min(b.quality, cap0);
+    if (qa0 !== qb0) return qa0 > qb0;
+    return a.steps < b.steps;
+  }
+  if (options.collectableGoal) {
+    const ca = Math.min(a.collectability, options.collectableGoal), cb = Math.min(b.collectability, options.collectableGoal);
+    if (ca !== cb) return ca > cb;
+  } else {
+    if (a.hqPercent !== b.hqPercent) return a.hqPercent > b.hqPercent;
+    const cap = craft.quality > 0 ? craft.quality : Infinity, qa = Math.min(a.quality, cap), qb = Math.min(b.quality, cap);
+    if (qa !== qb) return qa > qb;
+  }
+  return a.steps < b.steps;
+}
+function solveBeam(craft, crafterStats, options) {
+  if (options.safeMode === false || options.goalQuality != null) return null;
+  const S = CraftSimFast, E = CraftExact;
+  const stats = { craftsmanship: crafterStats.craftsmanship, control: crafterStats.getControl({}), cp: crafterStats.cp, level: crafterStats.level, specialist: !!crafterStats.specialist };
+  const ctx = S.makeCtx(craft, stats, options.hqIngredients || [], simulator.Tables.LEVEL_TABLE[crafterStats.level], allowedActionNames(crafterStats));
+  /* 接續求解：玩家手動選好的前幾步固定不動，先用精簡模擬器走完得到起點狀態，集束搜尋只展開後面的部分。
+   * 前綴有任何一步在精簡模擬器裡不能用（不支援的技能、CP 不夠…）就回傳 null，由其他策略處理。 */
+  const prefixKeys = options.fixedPrefix || [], prefixIds = []; let startState = null;
+  if (prefixKeys.length) {
+    const st0 = S.initState(ctx);
+    for (let pi = 0; pi < prefixKeys.length; pi++) {
+      const pid = S.A[prefixKeys[pi]];
+      if (pid == null || !S.canUse(ctx, st0, pid) || S.step(ctx, st0, pid) !== 0) return null;
+      prefixIds.push(pid);
+    }
+    startState = st0;
+  }
+  const capQ = options.collectableGoal ? options.collectableGoal * 10 : craft.quality;
+  ctx.QCAP = capQ;
+  const baseSeed = hashSeed(craft.id + '|' + stats.craftsmanship + '|' + stats.control + '|' + stats.cp + '|beam');
+  const keysOf = function (ids) { return ids.map(function (i) { return S.ACTIONS[i].name; }); };
+  const actionsOf = function (keys) { return keys.map(function (k) { const e = simulator.CraftingActionsRegistry.ALL_ACTIONS.find(function (x) { return x.name === k; }); return e ? new e.action.constructor() : null; }).filter(Boolean); };
+  let best = null, expandedTotal = 0, budget = options.beamMaxExpand || 36e6;
+  const realDeadline = Date.now() + (options.beamRealCapMs || 25000); // 安全上限：極慢的裝置不會無限等（只有觸發時結果才會因裝置而異）
+  const seen = new Set();
+  /* 手法庫（離線用超大運算量產生的靜態資料）：每套手法都用「玩家這組實際數值」重新評分，當作候選；
+   * 同時當作集束搜尋的保護種子（它們走過的狀態一定留在搜尋裡），所以結果保證不比庫裡任何一套在這組數值下的表現差。
+   * 庫的手法在這組數值下做不到的（CP 不夠、技能被排除）會被自然淘汰，不影響其他。 */
+  const libIds = [];
+  (prefixKeys.length ? [] : (options.libraryKeys || [])).slice(0, 48).forEach(function (keys) {
+    const ids = [];
+    for (let i = 0; i < keys.length; i++) { const id = S.A[keys[i]]; if (id == null) { ids.length = 0; break; } ids.push(id); }
+    if (ids.length) libIds.push(ids);
+  });
+  const pool = []; // 所有評估過的候選（供後面的快速局部搜尋挑前幾名）
+  const consider = function (ids) {
+    const keys = keysOf(ids), sig = keys.join(',');
+    if (seen.has(sig)) return;
+    seen.add(sig);
+    const rot = actionsOf(keys);
+    const ev = evaluateRotation(craft, rot, crafterStats, options.hqIngredients, options.safeMode, options.collectableGoal);
+    pool.push({ eval: ev, rotation: rot, ids: ids });
+    if (betterEval(craft, options, ev, best && best.eval)) best = { eval: ev, rotation: rot };
+  };
+  const reachedCap = function () { return best && best.eval.success && craft.quality > 0 && (options.collectableGoal ? best.eval.collectability >= options.collectableGoal : best.eval.quality >= craft.quality); };
+  /* 運算量分配（用實驗資料挑的）：第一階段 4 組權重都用最窄的集束各跑一次（只佔約 10% 運算量），依結果排名；
+   * 之後只讓表現最好的前 2 組用較寬的集束、最後只讓第 1 名用最寬的。4 組權重各有專長（有的專門對付「做不到滿品質」的配方、
+   * 有的專門對付「做得到滿品質」的配方），窄集束的排名足以分辨誰適合這個配方。
+   * 同樣約 35M 的運算量，平均損失（相對於全部跑滿）從 4.24% 降到 0.73%。 */
+  const widths = options.beamWidths || BEAM_WIDTHS; // 離線產生手法庫時可以傳更寬的
+  const keepPerStage = [BEAM_VARIANTS.length, 2, 1];
+  let order = BEAM_VARIANTS.map(function (_, i) { return i; });
+  const vscore = BEAM_VARIANTS.map(function () { return -1; });
+  outer:
+  for (let wi = 0; wi < widths.length; wi++) {
+    const run = order.slice(0, wi < keepPerStage.length ? keepPerStage[wi] : 1);
+    for (let ri = 0; ri < run.length; ri++) {
+      const vi = run[ri];
+      if (budget <= 0 || Date.now() > realDeadline) break outer;
+      const r = E.beamSearch(ctx, { beam: widths[wi], variant: BEAM_VARIANTS[vi], seeds: libIds, startState: startState, maxExpand: budget, realDeadline: realDeadline });
+      expandedTotal += r.expanded || 0; budget -= r.expanded || 0;
+      if (r.unsupported) return null;
+      if (r.ids) { consider(prefixIds.concat(r.ids)); if (r.qcap > vscore[vi]) vscore[vi] = r.qcap; }
+      if (reachedCap()) break outer; // 品質已經到上限：更寬的集束只會更慢，不會更好
+    }
+    order = order.slice().sort(function (x, y) { return (vscore[y] - vscore[x]) || (x - y); });
+  }
+  if (!best || best.eval.progression < craft.progress) return null; // 連進度都做不完才回傳無結果；品質達不到門檻（專家配方、數值不足）時仍回傳「最佳努力」的結果（success:false），跟 GA 一致
+  // 局部精修（既有的 ILS，用 vendor 評分）：整理成更短、更穩的手法；只在「更好」時採用
+  const originalRandom = Math.random;
+  try {
+    Math.random = mulberry32((baseSeed + 7000) >>> 0);
+    const sv = new CraftSolverGA(craft, crafterStats, { populationSize: 60, generations: 10, hqTarget: options.hqTarget || 90, hqIngredients: options.hqIngredients || [], safeMode: options.safeMode,
+      seeds: [best.rotation], deadline: CraftClock.now() + 900, collectableGoal: options.collectableGoal });
+    const rot = sv.ils(best.rotation, 800);
+    const ev = evaluateRotation(craft, rot, crafterStats, options.hqIngredients, options.safeMode, options.collectableGoal);
+    if (betterEval(craft, options, ev, best.eval)) best = { eval: ev, rotation: rot };
+  } catch (e) { /* 精修失敗就用集束搜尋原本的結果 */ } finally { Math.random = originalRandom; }
+  /* 快速局部搜尋（放在最後面，所以前面的流程跟沒有它時完全一樣，這一步只會「追加候選」，最終結果一定不會比沒有它時差）：
+   * 對「ILS 精修後的最佳結果」與候選池前幾名各精修一次（精簡模擬器，固定種子與評估次數，可重現）；
+   * 精修出的手法一樣用 vendor 模擬器重算後才參與比較。 */
+  if (best && best.eval.progression >= craft.progress && !options.noLocalSearch) {
+    const startList = [], sigs = new Set();
+    const addStart = function (ids) { if (!ids || !ids.length) return; const sg = ids.join(','); if (!sigs.has(sg)) { sigs.add(sg); startList.push(ids); } };
+    addStart(best.rotation.map(function (a) { return S.A[a.constructor.name]; }).every(function (x) { return x != null; }) ? best.rotation.map(function (a) { return S.A[a.constructor.name]; }) : null);
+    pool.slice().sort(function (a, b) { return betterEval(craft, options, a.eval, b.eval) ? -1 : (betterEval(craft, options, b.eval, a.eval) ? 1 : 0); }).slice(0, 3).forEach(function (c) { addStart(c.ids); });
+    for (let ti = 0; ti < Math.min(startList.length, 4); ti++) {
+      if (Date.now() > realDeadline) break;
+      const ls = E.localSearch(ctx, startList[ti], { seed: (baseSeed + 31 * (ti + 1)) >>> 0, maxEvals: options.localSearchEvals || 120000, prefixLen: prefixIds.length });
+      if (ls && ls.ids && ls.ids.length) consider(ls.ids);
+    }
+  }
+  return {
+    success: !!best.eval.success, actions: best.eval.actions, hqPercent: best.eval.hqPercent, collectability: best.eval.collectability, steps: best.eval.steps,
+    progression: best.eval.progression, quality: best.eval.quality, durabilityLeft: best.eval.durabilityLeft, cpLeft: best.eval.cpLeft,
+    attempts: 1, timedOut: false, seed: baseSeed, libHit: false, engine: 'beam', beamExpanded: expandedTotal, beamLibSeeds: libIds.length,
   };
 }
 
@@ -593,7 +732,7 @@ self.onmessage = async function (e) {
   if (msg.type === 'frontier' || msg.type === 'solve' || msg.type === 'preview') await self.__libraryReady;
   if (msg.type === 'frontier' || msg.type === 'simulate' || msg.type === 'needs' || msg.type === 'evalmany' || msg.type === 'preview') {
     try {
-      const recipe = CRAFT_RECIPES[msg.recipeId];
+      const recipe = getRecipe(msg.recipeId, msg.recipe);
       if (!recipe) throw new Error('找不到配方 id=' + msg.recipeId);
       const craft = buildCraftObject(Object.assign({ id: msg.recipeId }, recipe), {});
       if (msg.type === 'simulate') {
@@ -657,6 +796,12 @@ self.onmessage = async function (e) {
       const originalRandom = Math.random;
       Math.random = mulberry32((hashSeed(String(msg.recipeId) + '|' + (msg.seed || 0))) >>> 0);
       try {
+        // 集束搜尋當額外的候選來源（craft-frontier.js 會在「滿品質」目標時呼叫它）：在指定的寬裕數值下找一套手法，回傳技能名稱清單
+        if (!msg.noBeam) msg.beamFn = function (gen, maxExpand) {
+          const cs = buildCrafterStats(Object.assign({}, msg.stats, { craftsmanship: gen.cs, control: gen.ct, cp: gen.cp }));
+          const r = solveBeam(craft, cs, { hqIngredients: msg.hq || [], safeMode: msg.safeMode !== false, beamMaxExpand: maxExpand, beamWidths: [2500, 6000], beamRealCapMs: 6000, libraryKeys: [] });
+          return r && r.actions ? r.actions.map(function (a) { return a.constructor.name; }) : null;
+        };
         const out = CraftFrontier.frontierSearch(
           craft,
           function (cs, ct, cp) { return buildCrafterStats(Object.assign({}, msg.stats, { craftsmanship: cs, control: ct, cp: cp })); },
@@ -673,16 +818,20 @@ self.onmessage = async function (e) {
 
   const { requestId, recipeId, stats, options } = msg;
   try {
-    const recipe = CRAFT_RECIPES[recipeId];
+    const recipe = getRecipe(recipeId, msg.recipe);
     if (!recipe) throw new Error('找不到配方 id=' + recipeId);
 
     const craft = buildCraftObject(Object.assign({ id: recipeId }, recipe), options);
     const crafterStats = buildCrafterStats(stats);
-    const result = solveWithMitigations(craft, crafterStats, Object.assign({}, options || {}, { rawStats: stats, libraryKeys: sanitizeKeysList(libraryKeysFor(recipe), allowedActionNames(crafterStats)), allowedSet: allowedActionNames(crafterStats) }), function (p) {
+    const solveOpts = Object.assign({}, options || {}, { rawStats: stats, libraryKeys: sanitizeKeysList(libraryKeysFor(recipe), allowedActionNames(crafterStats)), allowedSet: allowedActionNames(crafterStats) });
+    const onProg = function (p) {
       // 手法庫狀況：確認「有手法庫、而且沒有直接命中滿品質」才通知網頁開另外兩條策略（直接命中約 1 秒就結束，不必白開 Worker）
       if (p && p.kind === 'info') { self.postMessage({ type: 'solve-info', requestId: requestId, libraryCount: p.libraryCount, libHit: p.libHit }); return; }
       self.postMessage({ type: 'solve-progress', requestId: requestId, progress: p });
-    });
+    };
+    // strategy:'beam' 是額外的候選來源（集束搜尋）；不支援的情況回傳 null，網頁端會忽略這條，不影響其他策略
+    const result = (options && options.strategy === 'beam') ? solveBeam(craft, crafterStats, solveOpts) : solveWithMitigations(craft, crafterStats, solveOpts, onProg);
+    if (!result) throw new Error('beam-unsupported');
     const lang = (options && options.lang) || 'tw';
     const macroLines = buildMacroLines(result.actions, lang);
     result.macroSegments = splitMacroSegments(macroLines);

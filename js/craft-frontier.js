@@ -236,6 +236,19 @@
         break;
       }
     }
+    /* 集束搜尋（js/craft-exact.js）當額外候選：放在遺傳演算法「全部做完之後」才跑，所以完全不會影響原本流程找到的任何結果
+     * （先前放在前面會改變遺傳演算法的種子，實測反而略差）。在 GA 已經找到可行的寬裕數值下，用集束搜尋找一套手法，
+     * 以同一個「精確反推需求」算出它最少需要多少，只是多一個候選進最後「互不被壓過」的篩選。只對「滿品質」目標有意義。 */
+    if (full && msg.beamFn && found && usedMul) {
+      try {
+        var genB = { cs: Math.ceil(ref.cs * usedMul), ct: Math.ceil(ref.ct * usedMul), cp: Math.ceil(ref.cp * usedMul + (usedMul > 1 ? 40 : 0)) };
+        var keysB = msg.beamFn(genB, msg.beamExpand || 3e6);
+        if (keysB && keysB.length) {
+          var nB = needsOfRotation(craft, actionsFromKeys(keysB), Object.assign({ gen: { cs: Math.max(Math.ceil(ref.cs * 10), 30000), ct: Math.max(Math.ceil(ref.ct * 10), 30000), cp: Math.max(Math.ceil(ref.cp * 10 + 600), 3000) } }, baseCtx), 5, true);
+          if (nB) { var cB = costOf(nB); nB.cost = cB.cost; nB.fromLib = true; merged.push(nB); }
+        }
+      } catch (e) { /* 集束搜尋失敗不影響已找到的結果 */ }
+    }
     var out = [];
     var pool = merged.concat(libCands);
     if (pool.length) {

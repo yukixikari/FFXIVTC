@@ -1,0 +1,224 @@
+/* ══════════════════════════════════════════════════════════════
+   市場頁「物品查詢」重排（v2）——載入順序：放在所有 css 的最後面
+   ‧ 版型依「市場頁自己的容器寬度」切換（container query），不看視窗寬度：
+       容器 ≥ 760px → 左：物品名稱＋資訊　右：價格表（50:50），價格表獨立捲動
+       容器 <  760px → 單欄縱向：資訊 → 價格表 → 稅後／更新／訊號（整區可捲）
+   ‧ 供應鏈圖改為彈窗（#mk-chain-modal）；平常畫在看不見的 .mk-chain-host 裡
+   ‧ 字級：內文 13、數值 14、在售最低 15（最大）。變數只在 #market-root 內有效，不影響其他頁面。
+   ══════════════════════════════════════════════════════════════ */
+#market-root { --fs-main: 14px; --fs-head: 13px; --fs-sub: 12px; --fs-tiny: 11px;
+  /* 供應鏈圖自己的一組字級（圖上卡片多、要小一級；只調這兩個就好，不影響全頁） */
+  }
+:root { --fs-chain-name: 13px; --fs-chain-price: 14px; /* 供應鏈彈窗掛在 body 下，不在 #market-root 內，所以變數要放 :root */ }
+#mk-pane-item { container: mkpane / inline-size; position: relative; }
+/* 左欄卡片共用的淡金底（與製作頁 rgba(197,160,89,.05~.08) 同一級），要調濃淡只改這兩個變數 */
+#mk-pane-item { --mk-card-bg: linear-gradient(180deg, rgba(197,160,89,.075), rgba(197,160,89,.035)); --mk-card-hi: inset 0 1px 0 rgba(252,246,186,.06); }
+
+/* ── 兩欄骨架 ── */
+#mk-pane-item .mk-v2 { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; align-items: stretch;
+  scrollbar-width: thin; scrollbar-color: rgba(197,160,89,.35) transparent; }
+#mk-pane-item .mk-col-info { display: contents; }
+#mk-pane-item .market-decision-band:not([hidden]) { display: contents; }
+#mk-pane-item .mk-col-info > .market-detail-header { order: 0; margin: 0; }
+#mk-pane-item .mdb-stats { order: 1; } #mk-pane-item .mdb-verdict { order: 2; }
+#mk-pane-item .mk-info-world { order: 3; } #mk-pane-item #mk-detail-market { order: 4; } #mk-pane-item .mk-info-notes { order: 5; }
+#mk-pane-item .mk-v2 > * { min-width: 0; flex-shrink: 0; }
+#mk-pane-item #mk-detail-market { overflow: visible; padding: 0; margin: 0; }
+#mk-pane-item #mk-listing-table-slot { flex: none; overflow: visible; max-height: none; min-height: 0; }
+@container mkpane (min-width: 760px) {
+  #mk-pane-item .mk-v2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px; overflow: hidden; align-items: stretch; }
+  #mk-pane-item .mk-col-info { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow-y: auto; padding-right: 4px; gap: 8px;
+    scrollbar-width: thin; scrollbar-color: rgba(197,160,89,.35) transparent; }
+  #mk-pane-item .mk-col-info > * { order: 0 !important; flex-shrink: 0; }
+  #mk-pane-item .mk-col-info .mdb-stats { order: 1 !important; } #mk-pane-item .mk-col-info .mdb-verdict { order: 2 !important; }
+  #mk-pane-item .mk-col-info .mk-info-world { order: 3 !important; } #mk-pane-item .mk-col-info .mk-info-notes { order: 4 !important; }
+  #mk-pane-item #mk-detail-market { order: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  #mk-pane-item #mk-detail-market > * { flex-shrink: 0; }
+  #mk-pane-item #mk-listing-table-slot { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+}
+/* 視窗 ≤720px（手機）：沿用原本整頁往下捲的做法 */
+@media (max-width: 720px) { #mk-pane-item .mk-v2 { overflow: visible; flex: none; } }
+
+/* ── 左欄整體字級：資訊欄文字多又密，比右側價格表小一級會顯得偏小，所以這個範圍內四級字級整體加大 1px ── */
+#mk-pane-item .mk-col-info, #mk-pane-item .mk-back-row { --fs-main: 15px; --fs-head: 14px; --fs-sub: 13px; --fs-tiny: 12px; }
+
+/* ── 左欄：物品名稱列 ── */
+#mk-pane-item .market-detail-header { gap: 6px 8px; align-items: center; }
+#mk-pane-item .market-detail-header h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 8px; font-size: 15px; line-height: 1.3; flex: 1 1 140px; min-width: 0; }
+#mk-pane-item .market-detail-header h3 .mk-npc { font-size: 13px; font-weight: 400; color: var(--dim); }
+#mk-pane-item .market-detail-header h3 .mk-npc b { font-size: 13px; font-weight: 600; color: var(--main); }
+#mk-pane-item .market-detail-header .market-solve-btn, #mk-pane-item .market-detail-header .market-history-btn { font-size: 13px; }
+
+/* ── 左欄：核心數字 ──
+   窄（手機、小視窗）：一行一項（標籤靠左、數字靠右）
+   寬（卡片內寬 ≥ 430px，約左欄 ≥ 455px）：2×2，每格仍是「標籤靠左、數字靠右」；格與格之間只用細線分隔
+   判斷依據是卡片本身的寬度（container query），不看視窗寬度。最低價最大（18px），其餘字級不縮小。 */
+#mk-pane-item .mdb-stats { flex: 0 0 auto; display: block; padding: 8px 12px; border: 1.2px solid var(--tb); border-radius: 8px; background: var(--mk-card-bg); box-shadow: var(--mk-card-hi); overflow: hidden; container: mkstats / inline-size; }
+#mk-pane-item .mdb-stats .market-stat-bar, #mk-pane-item .mdb-stats .market-stat-bar[data-fit] { flex: 0 0 auto; display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; padding: 0; border: 0; background: none; border-radius: 0; }
+#mk-pane-item .mdb-stats .market-stat-tile { display: flex; flex-direction: row; justify-content: space-between; align-items: baseline; gap: 8px; padding: 5px 0; border: 0; border-bottom: 1px solid var(--tb); background: none; }
+#mk-pane-item .mdb-stats .market-stat-tile:first-child { padding-top: 0; }
+#mk-pane-item .mdb-stats .market-stat-tile:last-child { border-bottom: 0; padding-bottom: 0; }
+#mk-pane-item .mdb-stats .market-stat-tile-strong { background: none; }
+#mk-pane-item .mdb-stats .mst-label { font-size: var(--fs-head); color: var(--dim); }
+#mk-pane-item .mdb-stats .mst-val { font-size: var(--fs-main); font-weight: 700; color: var(--gold-bright); text-align: right; }
+#mk-pane-item .mdb-stats .market-stat-tile-strong .mst-val { font-size: 18px; color: #4ade80; }
+#mk-pane-item .mdb-stats .mst-val small { font-size: var(--fs-sub); }
+#mk-pane-item .mdb-stats .mst-q { font-size: var(--fs-tiny); }
+@container mkstats (min-width: 430px) {
+  #mk-pane-item .mdb-stats .market-stat-bar, #mk-pane-item .mdb-stats .market-stat-bar[data-fit] { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: -8px -12px; }
+  #mk-pane-item .mdb-stats .market-stat-tile, #mk-pane-item .mdb-stats .market-stat-tile:first-child, #mk-pane-item .mdb-stats .market-stat-tile:last-child { flex-wrap: wrap; padding: 10px 14px; border-bottom: 0; }
+  #mk-pane-item .mdb-stats .market-stat-tile:nth-child(even) { border-left: 1px solid var(--tb); }
+  #mk-pane-item .mdb-stats .market-stat-tile:nth-child(n+3) { border-top: 1px solid var(--tb); }
+  #mk-pane-item .mdb-stats .market-stat-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* ── 左欄：買／製作結論 ──
+   窄：兩格（標籤＋數字同一行、高度約 2 行）→ 下面是材料區
+   寬（卡片內寬 ≥ 600px）：兩格寬度貼合內容 → 右邊是材料區（剩餘寬度全給它）
+   材料區 = 第一行「材料」標題＋供應鏈鍵（製作求解同款按鈕）、第二行起是材料名稱（純文字，以淡淡的「·」分隔，自動換行，不會把名字切斷）
+   「建議自製」的材料前面加錘子圖示（不用顏色，避免被誤認成「比較便宜」） */
+#mk-pane-item .mdb-verdict:not(:empty) { display: block; padding: 10px 12px; border: 1.2px solid var(--tb); border-radius: 8px; background: var(--mk-card-bg); box-shadow: var(--mk-card-hi); container: mkverdict / inline-size; }
+#mk-pane-item .mdb-v-body { display: flex; flex-direction: column; gap: 10px; }
+#mk-pane-item .mdb-v-tiles { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+#mk-pane-item .mdb-v-tiles .msc-tile { flex: 1 1 140px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 8px; min-height: 54px; padding: 8px 12px; border-radius: 8px; }
+#mk-pane-item .mdb-v-tiles .msc-tile em { font-size: var(--fs-head); }
+#mk-pane-item .mdb-v-tiles .msc-tile b { font-size: 19px; line-height: 1.25; }
+#mk-pane-item .mdb-v-tiles .msc-badge { position: static; height: auto; padding: 0; border: 0; background: none; font-size: var(--fs-sub); }
+#mk-pane-item .mdb-v-mult { align-self: center; font-size: var(--fs-sub); color: var(--dim); }
+#mk-pane-item .mdb-v-mats { display: flex; flex-direction: column; gap: 5px; min-width: 0; justify-content: center; }
+#mk-pane-item .mdb-v-mhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#mk-pane-item .mdb-v-lead { color: var(--gold); font-size: var(--fs-head); font-weight: 600; white-space: nowrap; }
+#mk-pane-item .mdb-chain-btn { flex: none; white-space: nowrap; font-size: 13px; padding: 4px 12px; }
+#mk-pane-item .mdb-v-mlist { min-width: 0; font-size: var(--fs-head); line-height: 1.6; color: var(--main); }
+#mk-pane-item .mdb-mat { white-space: nowrap; }
+#mk-pane-item .mdb-mat:not(:last-child)::after { content: "·"; margin-left: 5px; color: var(--dim); opacity: .7; }
+#mk-pane-item .mdb-mat.is-craft { color: var(--gold-bright); }
+#mk-pane-item .mdb-mat .ph { font-size: var(--fs-head); margin-right: 3px; vertical-align: -1px; color: var(--gold-bright); }
+@container mkverdict (min-width: 600px) {
+  #mk-pane-item .mdb-v-body { flex-direction: row; align-items: stretch; gap: 12px; }
+  #mk-pane-item .mdb-v-tiles { flex: 0 1 auto; flex-wrap: nowrap; }
+  #mk-pane-item .mdb-v-tiles .msc-tile { flex: 0 1 auto; min-width: 120px; padding: 8px 14px; }
+  #mk-pane-item .mdb-v-mats { flex: 1 1 0; min-width: 200px; }
+  #mk-pane-item .mdb-v-tiles + .mdb-v-mats { padding-left: 14px; border-left: 1px dashed rgba(197,160,89,.28); }
+}
+#mk-pane-item .mdb-v-loading { margin: 0; font-size: var(--fs-sub); }
+
+/* ── 左欄：世界列（永遠顯示完整格子；原本「視窗太矮改下拉」的做法停用） ── */
+#mk-pane-item .mk-info-world:not(:empty) { padding: 6px 8px; border: 1.2px solid var(--tb); border-radius: 8px; background: var(--mk-card-bg); box-shadow: var(--mk-card-hi); }
+#mk-pane-item .mk-info-world .market-world-strip { display: grid !important; gap: 5px; margin: 0; }
+#mk-pane-item .mk-world-dd { display: none !important; }
+#mk-pane-item .mws-cell { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; gap: 0 6px; flex: none; min-width: 0; padding: 4px 8px; text-align: left; justify-items: start; border-radius: 6px; }
+#mk-pane-item .mws-name { font-size: var(--fs-sub); color: var(--dim); }
+#mk-pane-item .mws-age { justify-self: end; font-size: var(--fs-tiny); }
+#mk-pane-item .mws-price { grid-column: 1 / -1; justify-content: flex-start; font-size: var(--fs-head); font-weight: 700; }
+
+/* ── 左欄：寄售稅後／更新時間／賣出訊號 ── */
+#mk-pane-item .mk-info-notes:not(:empty) { display: flex; flex-direction: column; gap: 2px; padding: 6px 12px; border: 1.2px solid var(--tb); border-radius: 8px; background: var(--mk-card-bg); box-shadow: var(--mk-card-hi); }
+#mk-pane-item .mk-info-notes .market-stat-foot { margin: 0; font-size: var(--fs-sub); line-height: 1.6; }
+#mk-pane-item .mk-notes-sig { min-height: 0; font-size: var(--fs-sub); }
+#mk-pane-item .mk-notes-sig:has(.market-sig[style*="none"]) { display: none; }
+
+/* ── 右欄：價格表上方工具列（一行：在售｜成交｜走勢　HQ　……　買方稅5%） ── */
+#mk-pane-item .market-listing-bar { flex-wrap: wrap; gap: 6px; font-size: var(--fs-sub); }
+#mk-pane-item .market-listing-bar-r { margin-left: auto; white-space: nowrap; }
+#mk-pane-item .market-fee-toggle-inline { font-size: var(--fs-sub); }
+
+/* ── 供應鏈容器：平常在畫面外、看不見，但照常排版（結論要靠它算） ── */
+.mk-chain-host:not(.is-in-modal) { position: absolute; left: -99999px; top: 0; width: 760px; visibility: hidden; pointer-events: none; }
+.mk-chain-host.is-in-modal { position: static; width: auto; visibility: visible; pointer-events: auto; }
+
+/* ── 供應鏈彈窗（層級 10035，比其他彈窗 10040 低：圖上再開的彈窗一定疊在上面） ── */
+.mk-chain-modal { z-index: 10035; }
+.mk-chain-modal .mk-chain-panel { width: min(900px, 96vw); max-height: 92vh; } /* 加寬：5 張 156px 的卡片＋間距約需 830px */
+.mk-chain-modal .mk-chain-body { padding: 0 16px 16px; }
+.mk-chain-modal .msc-head { position: sticky; top: 0; z-index: 6; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 8px; padding: 10px 0; background: var(--bg); border-bottom: 1px solid var(--tb); margin: 0 -4px calc(14px - var(--msc-gap, 52px)); }
+.mk-chain-modal .msc-head-title { justify-self: start; color: var(--gold-bright); font-size: var(--fs-main); font-weight: 700; padding-left: 4px; }
+.mk-chain-modal .msc-head-btns { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.mk-chain-modal .msc-head-btns .market-history-btn { font-size: var(--fs-sub); }
+.mk-chain-modal .msc-head-close { justify-self: end; padding: 4px 6px; }
+.msc-head { display: none; }
+.mk-chain-modal .msc-head { display: grid; }
+
+/* ── 供應鏈圖：沿用原本全部美術（卡片框、徽章、連線、光點、脈衝），只修排版 ── */
+.mk-chain-modal .msc-root[data-lv] { --msc-gap: 52px; --msc-rowgap: 26px; padding: 4px 0 0; gap: var(--msc-gap); }
+.mk-chain-modal .msc-root[data-lv] .msc-row { gap: var(--msc-rowgap) 12px; }
+.mk-chain-modal .msc-root[data-lv] .msc-hero { display: grid; grid-template-columns: auto minmax(0,1fr) auto; grid-template-areas: "ico name step" "ico cmps cmps";
+  align-items: center; column-gap: 12px; row-gap: 8px; width: 100%; max-width: 540px; margin: 0 auto; padding: 10px 14px; box-sizing: border-box; }
+.mk-chain-modal .msc-hero-ico { grid-area: ico; }
+.mk-chain-modal .msc-hero-name { grid-area: name; justify-content: flex-start; text-align: left; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
+.mk-chain-modal .msc-hero-step { grid-area: step; justify-self: end; }
+.mk-chain-modal .msc-hero-cmps { grid-area: cmps; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; }
+.mk-chain-modal .msc-hero .msc-tile { padding: 3px 10px; } .mk-chain-modal .msc-hero .msc-tile em { font-size: var(--fs-head); } .mk-chain-modal .msc-hero .msc-tile b { font-size: var(--fs-chain-price); }
+.mk-chain-modal .msc-root[data-lv] .msc-cell { --msc-maxw: 172px; flex: 0 0 min(var(--msc-maxw), calc((100% - (var(--msc-cols,1) - 1) * 12px) / var(--msc-cols,1)));
+  flex-direction: row; justify-content: center; align-items: center; gap: 8px; padding: 12px 9px 7px; text-align: center; }
+.mk-chain-modal .msc-cell .msc-ico { flex: none; }
+.mk-chain-modal .msc-cell .msc-body { align-items: center; text-align: center; min-width: 0; }
+.mk-chain-modal .msc-cell .msc-name { font-size: var(--fs-chain-name); }
+.mk-chain-modal .msc-cell .msc-qty { font-size: var(--fs-chain-name); }
+.mk-chain-modal .msc-cell .msc-price { font-size: var(--fs-chain-price); }
+.mk-chain-modal .msc-cell.msc-more { flex-direction: column; }
+.mk-chain-modal .msc-key { font-size: var(--fs-sub); }
+@media (max-width: 480px) {
+  .mk-chain-modal .mk-chain-panel { width: 96vw; }
+  .mk-chain-modal .mk-chain-body { padding: 0 10px 12px; }
+}
+
+/* ── 手機：頂部搜尋列／分頁不再被擠變形（搜尋框整行、設定按鈕整行、四個分頁平均分、不換行） ── */
+@media (max-width: 560px) {
+  #market-root .market-searchbar { flex-wrap: wrap; gap: 6px; }
+  #market-root .market-search-box { flex: 1 1 100%; }
+  #market-root .market-settings-btn { flex: 1 1 100%; }
+  #market-root .market-tabs { gap: 2px; }
+  #market-root .market-tabs .craft-tab-btn { flex: 1 1 0; min-width: 0; white-space: nowrap; padding-left: 2px; padding-right: 2px; font-size: var(--fs-head); }
+}
+
+/* ══════════ 買／製作哪邊便宜都用綠色：差額徽章也跟著綠（只動決策卡與主卡片，材料小卡的徽章不動） ══════════ */
+#mk-pane-item .mdb-v-tiles .msc-badge.is-buy, .mk-chain-modal .msc-hero .msc-badge.is-buy { color: #4ade80; background: #16301f; }
+#mk-pane-item .mdb-vtxt.is-buy { color: #4ade80; }
+
+/* ══════════ 返回：獨立一行的按鈕（放在標題列上方，不擠壓標題列；名稱不截斷，太長就自然換行） ══════════ */
+#mk-pane-item .mk-col-info > .mk-back-row { order: -1 !important; }
+#mk-pane-item .mk-back-row { margin: 0 0 2px; }
+#mk-pane-item .mk-back-btn { max-width: 100%; text-align: left; align-items: flex-start; }
+#mk-pane-item .mk-back-btn span { overflow: visible; text-overflow: clip; white-space: normal; }
+
+/* ══════════ 標題列按鈕 ══════════
+   「加入關注」永遠只有圖示；「製作求解」「取得方式」預設完整文字，由 JS（fitDetailHeader）實際量過、
+   完整版會讓標題列變高（換行）時才加上 .is-compact 縮成圖示 */
+#mk-pane-item .market-detail-header .mk-btn-l { }
+#mk-pane-item .market-detail-header .market-watch-btn-header .mk-btn-l { display: none; }
+#mk-pane-item .market-detail-header .market-watch-btn-header { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; font-size: 15px; }
+#mk-pane-item .market-detail-header.is-compact { flex-wrap: nowrap; }
+#mk-pane-item .market-detail-header.is-compact h3 { flex: 1 1 80px; }
+#mk-pane-item .market-detail-header.is-compact .mk-btn-l { display: none; }
+#mk-pane-item .market-detail-header.is-compact .market-solve-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; font-size: 15px; }
+
+/* ══════════ 代幣兌換：窄容器時每列改兩行（第一行名次＋完整名稱，第二行三個數字） ══════════ */
+#mk-pane-tokens { container: mktok / inline-size; }
+@container mktok (max-width: 560px) {
+  .mtr-head, .mtr-row { grid-template-columns: 26px repeat(3, minmax(0, 1fr)); grid-template-areas: "rank name name name" ". val vel freq"; row-gap: 2px; }
+  .mtr-head .mtr-rank, .mtr-row .mtr-rank { grid-area: rank; }
+  .mtr-head .mtr-name, .mtr-row .mtr-name { grid-area: name; }
+  .mtr-head .mtr-val, .mtr-row .mtr-val { grid-area: val; }
+  .mtr-head .mtr-vel, .mtr-row .mtr-vel { grid-area: vel; }
+  .mtr-head .mtr-freq, .mtr-row .mtr-freq { grid-area: freq; }
+  .mtr-row .mtr-label { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+
+/* ══════════ 代幣兌換：「商店賣價排行」按鈕 ══════════
+   名稱列 = 一個可以換行的橫排：[展開按鈕（箭頭／圖示／名稱／可換N種…）] 　[🏪 商店賣價排行（N） ›]
+   放得下 → 同一行、按鈕靠右；放不下 → 先縮成「商店價」再試（由 market-panel.js 的 fitNpcBtn 實際量過）；
+   還是放不下 → 按鈕自然換到下一行（靠右、恢復完整文字）。右緣對齊下方排行表的右緣（表寬上限 780px＋左內距 24px＝804px）。
+   按鈕只在這一列展開時出現。 */
+.market-token-headrow { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; padding-right: max(6px, calc(100% - 804px)); }
+.market-token-headrow .market-token-head { flex: 1 1 auto; width: auto; min-width: 0; }
+.mk-npc-slot { display: none; flex: none; margin-left: auto; }
+.market-token-row.is-open .mk-npc-slot:not(:empty) { display: block; }
+.market-token-row[data-npc-fit="wrap"] .mk-npc-slot { margin-bottom: 6px; }
+.mk-npc-slot .mk-npc-open { margin: 0; }
+.mk-npc-l-short { display: none; }
+.mk-npc-open.is-short .mk-npc-l-full { display: none; }
+.mk-npc-open.is-short .mk-npc-l-short { display: inline; }
+
+/* ══════════ 掛單訊號跟「寄售稅後／更新時間」同一行：沒有訊號時整段隱藏 ══════════ */
+#mk-pane-item .mk-info-notes .mk-sig-item:has(.market-sig[style*="none"]) { display: none; }

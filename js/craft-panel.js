@@ -21,6 +21,19 @@
  * 不是憑印象猜的翻譯。ROBUST（頑強，只會在超稀有情況下接在「吉兆」前面觸發到「結實」）
  * 玩家截圖裡沒有出現這個狀態球，暫時沒有能核對的來源，所以先留言標記、用回英文鍵名顯示，
  * 不要為了填滿表格硬猜一個可能是錯的中文詞——這正是這次要修的問題，不能在修的過程中又犯一次。 */
+/* 建立求解 Worker：送出訊息時自動把「這一個配方」附在 msg.recipe 裡，Worker 就不必各自載入整份配方庫（約 9 MB、數十 MB 記憶體）。
+ * 附上的配方跟 Worker 自己載入的是同一份資料，求解結果完全相同。 */
+function newCraftWorker() {
+  const w = new Worker('js/craft-worker.js');
+  const post = w.postMessage.bind(w);
+  w.postMessage = function (msg, transfer) {
+    if (msg && msg.recipeId != null && !msg.recipe && typeof CRAFT_RECIPES !== 'undefined' && CRAFT_RECIPES[msg.recipeId]) msg = Object.assign({}, msg, { recipe: CRAFT_RECIPES[msg.recipeId] });
+    return post(msg, transfer);
+  };
+  return w;
+}
+
+
 var CONDITION_META = {
   NORMAL:    { label: '普通',   cls: 'cond-normal' },
   GOOD:      { label: '高品質', cls: 'cond-good' },
@@ -196,7 +209,7 @@ app._craftReady = function () {
   let activeSolve = null;
   function ensureWorker() {
     if (worker) return worker;
-    const w = worker = new Worker('js/craft-worker.js');
+    const w = worker = newCraftWorker();
     w.addEventListener('error', function (err) {
       if (w !== worker) return;
       worker = null;
@@ -412,8 +425,8 @@ app._craftReady = function () {
           '</div>' +
           '<div id="cf-solve-nav" class="craft-solve-nav" style="display:none">' +
             '<div class="craft-solve-nav-mode-toggle" id="cf-solve-nav-mode">' +
-              '<button type="button" data-mode="history" class="active"><i class="ph ph-clock-counter-clockwise"></i>瀏覽紀錄</button>' +
-              '<button type="button" data-mode="batch"><i class="ph ph-list-numbers"></i>批次順序</button>' +
+              '<button type="button" data-mode="history" class="active" title="目前：瀏覽紀錄（點一下切換成批次順序）"><i class="ph ph-clock-counter-clockwise"></i><span class="cnm-text">瀏覽紀錄</span><i class="ph ph-arrows-left-right cnm-swap"></i></button>' +
+              '<button type="button" data-mode="batch" title="目前：批次順序（點一下切換成瀏覽紀錄）"><i class="ph ph-list-numbers"></i><span class="cnm-text">批次順序</span><span class="cnm-pos" id="cf-solve-nav-pos-mini"></span><i class="ph ph-arrows-left-right cnm-swap"></i></button>' +
             '</div>' +
             '<div class="craft-solve-nav-row">' +
               '<button type="button" id="cf-solve-prev" class="craft-solve-nav-btn"><i class="ph ph-caret-left"></i><span id="cf-solve-prev-label"></span></button>' +
@@ -2053,7 +2066,6 @@ app._craftReady = function () {
       $('cf-solve').innerHTML = '<i class="ph ph-play"></i>開始求解';
     }
     if (typeof updateCollectableSlider === 'function') updateCollectableSlider({ reset: true });
-    if (typeof schedulePreview === 'function') schedulePreview();
     return true;
   }
 
@@ -2125,7 +2137,7 @@ app._craftReady = function () {
   $('cf-solve-next').addEventListener('click', function () { if (solveNavMode === 'batch') stepBatchSeq(1); else stepSolveHistory(1); });
   $('cf-solve-nav-mode').querySelectorAll('button').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      solveNavMode = btn.dataset.mode;
+      solveNavMode = solveNavMode === 'batch' ? 'history' : 'batch'; // 切換式：只看得到目前模式的那顆，點它＝切到另一個
       renderSolveNav();
     });
   });
@@ -2308,6 +2320,7 @@ app._craftReady = function () {
       $('cf-solve-prev-label').textContent = hasPrev ? batchList[batchSeqIndex - 1].name : '';
       $('cf-solve-next-label').textContent = hasNext ? batchList[batchSeqIndex + 1].name : (batchSeqIndex < 0 ? '開始' : '');
       $('cf-solve-nav-pos').textContent = batchSeqIndex >= 0 ? ('第 ' + (batchSeqIndex + 1) + ' / ' + batchList.length + ' 項') : ('共 ' + batchList.length + ' 項');
+      $('cf-solve-nav-pos-mini').textContent = batchSeqIndex >= 0 ? ((batchSeqIndex + 1) + '/' + batchList.length) : ('共' + batchList.length);
       return;
     }
 
@@ -2323,6 +2336,7 @@ app._craftReady = function () {
     $('cf-solve-prev-label').textContent = restoring ? recipeNameById(solveHistory[solveHistoryIndex]) : (hasPrev ? recipeNameById(solveHistory[solveHistoryIndex - 1]) : '');
     $('cf-solve-next-label').textContent = hasNext ? recipeNameById(solveHistory[solveHistoryIndex + 1]) : '';
     $('cf-solve-nav-pos').textContent = '';
+    $('cf-solve-nav-pos-mini').textContent = '';
     $('cf-solve-nav-clear').style.display = solveHistory.length ? '' : 'none';
   }
 
@@ -3418,27 +3432,63 @@ app._craftReady = function () {
     const w = ensureWorker();
     const requestId = ++solveSeq;
     const resetBtn = function () { btn.disabled = false; btn.innerHTML = '<i class="ph ph-magic-wand"></i>接續求解'; };
-    // 接續求解：把目前手動選過的步驟當固定前綴傳給 Worker，讓它接著算剩下的部分並直接回傳完整巨集
+    // 接續求解：把目前手動選過的步驟當固定前綴傳給 Worker，讓它接著算剩下的部分並直接回傳完整巨集。
+    // 另外多開一個 Worker 跑集束搜尋（strategy:'beam'，同樣帶著固定前綴），兩邊的結果取最好的：原本的結果一定是候選之一，所以只會更好。
+    const cores = navigator.hardwareConcurrency || 4;
+    let wb = null;
+    try { wb = newCraftWorker(); } catch (e) { wb = null; }
+    const killExtra = function () { if (wb) { try { wb.terminate(); } catch (e) { /* 已經結束就算了 */ } wb = null; } };
+    let primary = null, extra = null, extraPending = !!wb, shown = false;
+    const betterMsg = function (a, b) { // 成功 > 優質率 > 品質（上限為配方品質）> 步數少
+      if (!b) return true;
+      const ra = a.result, rb = b.result;
+      if (!!ra.success !== !!rb.success) return !!ra.success;
+      if (!ra.success) {
+        const P = a.craft && a.craft.progress ? a.craft.progress : Infinity, fa = ra.progression >= P, fb = rb.progression >= P;
+        if (fa !== fb) return fa;
+        if (!fa) return ra.progression > rb.progression;
+        const cap0 = a.craft && a.craft.quality > 0 ? a.craft.quality : Infinity, qa0 = Math.min(ra.quality, cap0), qb0 = Math.min(rb.quality, cap0);
+        if (qa0 !== qb0) return qa0 > qb0;
+        return ra.steps < rb.steps;
+      }
+      if (ra.hqPercent !== rb.hqPercent) return ra.hqPercent > rb.hqPercent;
+      const cap = a.craft && a.craft.quality > 0 ? a.craft.quality : Infinity, qa = Math.min(ra.quality, cap), qb = Math.min(rb.quality, cap);
+      if (qa !== qb) return qa > qb;
+      return ra.steps < rb.steps;
+    };
+    const show = function () {
+      if (shown || !primary || extraPending) return;
+      shown = true; killExtra(); activeSolve = null; resetBtn();
+      const cands = [primary, extra].filter(function (m) { return m && m.ok && m.result; });
+      if (!cands.length) { $('cf-m-result').innerHTML = '<p class="craft-error">求解失敗：' + escapeHtml(primary.error || '未知錯誤') + '</p>'; return; }
+      let pick = cands[0];
+      cands.forEach(function (m) { if (betterMsg(m, pick)) pick = m; });
+      const segs = pick.result.macroSegments || [];
+      $('cf-m-result').innerHTML = macroSegmentsHtml(segs);
+      bindMacroCopy($('cf-m-result'), segs);
+    };
     function onMsg(e) {
       if (e.data.requestId !== requestId || e.data.type === 'solve-progress' || e.data.type === 'solve-info') return;
       w.removeEventListener('message', onMsg);
-      activeSolve = null;
-      resetBtn();
-      if (!e.data.ok) { $('cf-m-result').innerHTML = '<p class="craft-error">求解失敗：' + escapeHtml(e.data.error || '未知錯誤') + '</p>'; return; }
-      const segs = e.data.result.macroSegments || [];
-      $('cf-m-result').innerHTML = macroSegmentsHtml(segs);
-      bindMacroCopy($('cf-m-result'), segs);
+      primary = e.data;
+      show();
     }
     activeSolve = {
       onMsg: onMsg,
-      reset: resetBtn,
-      fail: function (msg) { resetBtn(); $('cf-m-result').innerHTML = '<p class="craft-error">求解引擎載入失敗：' + escapeHtml(msg) + '</p>'; },
+      reset: function () { resetBtn(); killExtra(); shown = true; },
+      fail: function (msg) { killExtra(); shown = true; resetBtn(); $('cf-m-result').innerHTML = '<p class="craft-error">求解引擎載入失敗：' + escapeHtml(msg) + '</p>'; },
     };
     w.addEventListener('message', onMsg);
-    w.postMessage({
-      type: 'solve', requestId: requestId, recipeId: selectedRecipe.id, stats: stats,
-      options: { lang: 'tw', trials: 3, populationSize: 150, generations: 40, hqIngredients: buildHqIngredients(), fixedPrefix: manualRotation.map(function (a) { return a.constructor.name; }) },
-    });
+    const baseOpts = { lang: 'tw', trials: 3, populationSize: 150, generations: 40, hqIngredients: buildHqIngredients(), fixedPrefix: manualRotation.map(function (a) { return a.constructor.name; }) };
+    if (wb) {
+      wb.onmessage = function (e) {
+        if (e.data.requestId !== requestId || e.data.type === 'solve-progress' || e.data.type === 'solve-info') return;
+        extra = e.data; extraPending = false; show();
+      };
+      wb.onerror = function () { extraPending = false; show(); };
+      wb.postMessage({ type: 'solve', requestId: requestId, recipeId: selectedRecipe.id, stats: stats, options: Object.assign({}, baseOpts, { strategy: 'beam', beamMaxExpand: cores >= 4 ? 36e6 : 12e6 }) });
+    }
+    w.postMessage({ type: 'solve', requestId: requestId, recipeId: selectedRecipe.id, stats: stats, options: baseOpts });
   });
 
 
@@ -3463,72 +3513,6 @@ app._craftReady = function () {
     };
     return { final: final, stats: stats };
   }
-
-  /* ── 免求解的能力預覽 ──
-   * 選了配方、輸入數值後，不用按求解，就能看到「手法庫已驗證的做法需要多少數值」，以及你目前的數值離它多遠。
-   * 數字是手法庫裡現成手法的精確需求（模擬反推），是「已知做得到的需求」，不是理論最低值（實際求解可能找到更低的）。
-   * 這個配方沒有手法庫就不顯示任何東西。 */
-  let previewWorker = null, previewSeq = 0, previewTimer = null;
-  function capabilityPreviewHtml(d, final) {
-    if (!d || !d.has || !d.cur.length) return '';
-    const fmt = function (n) { return Math.round(n).toLocaleString(); };
-    const cur = { cs: final.craftsmanship, ct: final.control, cp: final.cp };
-    const gap = function (c) { // 離目前數值還差多少（比例加總）；csMax＝這套手法能承受的作業精度上限
-      if (c.csMax != null && cur.cs > c.csMax) return Infinity;
-      return Math.max(0, c.cs - cur.cs) / c.cs + Math.max(0, c.ct - cur.ct) / Math.max(1, c.ct) + Math.max(0, c.cp - cur.cp) / c.cp;
-    };
-    const best = function (list) { return list.reduce(function (b, c) { return !b || gap(c) < gap(b) ? c : b; }, null); };
-    const line = function (c, label) {
-      if (!c || gap(c) === Infinity) return '';
-      const parts = [['作業精度', c.cs, cur.cs], ['加工精度', c.ct, cur.ct], ['CP', c.cp, cur.cp]].map(function (x) {
-        const diff = x[1] - x[2];
-        return diff > 0 ? '<span class="cp-need">' + x[0] + ' ' + fmt(x[1]) + '<em>+' + fmt(diff) + '</em></span>' : '<span class="cp-ok">' + x[0] + ' ✓</span>';
-      });
-      return '<div class="cp-line"><span class="cp-k">' + label + '</span>' + parts.join('') + '</div>';
-    };
-    const b1 = best(d.cur), b2 = d.hasHqChoice ? best(d.allHq) : null;
-    const done = (b1 && gap(b1) === 0) || (b2 && gap(b2) === 0);
-    let h = '<div class="cp-head"><i class="ph ph-compass"></i>滿品質預覽<span class="cp-sub">手法庫已驗證・不用求解</span></div>';
-    if (done) {
-      h += '<div class="cp-line"><span class="cp-ok">✓ 你目前的數值已足夠做到滿品質' + (gap(b1) === 0 ? '' : '（需用全 HQ 材料）') + '</span></div>';
-    } else {
-      h += line(b1, '最接近的做法');
-      if (b2 && (!b1 || gap(b2) < gap(b1) - 1e-9)) h += line(b2, '全 HQ 材料');
-    }
-    return h;
-  }
-  function runPreview() {
-    const el = $('cf-preview');
-    if (!el) return;
-    if (!selectedRecipe) { el.style.display = 'none'; return; }
-    let ctx;
-    try { ctx = currentSolveStats(); } catch (err) { return; }
-    if (!(ctx.final.craftsmanship > 0)) { el.style.display = 'none'; return; }
-    if (!previewWorker) {
-      try {
-        previewWorker = new Worker('js/craft-worker.js');
-        previewWorker.addEventListener('error', function () { previewWorker = null; });
-      } catch (err) { return; }
-      previewWorker.addEventListener('message', function (e) {
-        if (e.data.requestId !== previewSeq || !e.data.ok) return;
-        const html = capabilityPreviewHtml(e.data.result, previewWorker._final || ctx.final);
-        el.innerHTML = html; el.style.display = html ? 'flex' : 'none';
-      });
-    }
-    previewWorker._final = ctx.final;
-    previewWorker.postMessage({ type: 'preview', requestId: ++previewSeq, recipeId: selectedRecipe.id, stats: ctx.stats, hq: buildHqIngredients() });
-  }
-  function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(runPreview, 350); }
-  (function mountPreview() {
-    const btn = $('cf-solve');
-    if (!btn || $('cf-preview')) return;
-    const div = document.createElement('div');
-    div.id = 'cf-preview'; div.className = 'craft-preview'; div.style.display = 'none';
-    btn.parentNode.insertBefore(div, btn);
-    ['input', 'change'].forEach(function (evt) {
-      document.addEventListener(evt, function (e) { const id = e.target && e.target.id; if (id && id.indexOf('cf-') === 0 && id !== 'cf-recipe-search' && id !== 'cf-preview') schedulePreview(); }, true);
-    });
-  })();
 
   $('cf-solve').addEventListener('click', function () {
     if (!selectedRecipe) return;
@@ -3574,6 +3558,30 @@ app._craftReady = function () {
       if (!res || !res.success) return (cr && cr.progress ? Math.min(res ? res.progression : 0, cr.progress) / cr.progress : 0) * 100;
       return 100 + res.hqPercent + (cr && cr.quality > 0 ? Math.min(res.quality, cr.quality) / cr.quality * 10 : 0) - res.steps * 0.01;
     };
+    /* 「哪個結果比較好」：成功 > 優質率（收藏品模式則是收藏度，上限為目標）> 品質（上限為配方品質）> 步數少。
+     * 之前用 scoreRes 把步數當成小扣分混進分數裡，會讓「少 1 步、少一點品質」的結果贏過「品質較高」的結果；現在品質一定優先於步數。 */
+    const betterRes = function (a, b, cr) {
+      if (!b) return true;
+      const ra = a.result, rb = b.result;
+      if (!!ra.success !== !!rb.success) return !!ra.success;
+      if (!ra.success) { // 都沒成功：先看誰做完了進度，再比品質、步數（數值不足的專家配方常見）
+        const P = cr && cr.progress ? cr.progress : Infinity, fa = ra.progression >= P, fb = rb.progression >= P;
+        if (fa !== fb) return fa;
+        if (!fa) return ra.progression > rb.progression;
+        const cap0 = cr && cr.quality > 0 ? cr.quality : Infinity, qa0 = Math.min(ra.quality, cap0), qb0 = Math.min(rb.quality, cap0);
+        if (qa0 !== qb0) return qa0 > qb0;
+        return ra.steps < rb.steps;
+      }
+      if (collectableGoal && ra.collectability != null && rb.collectability != null) {
+        const ca = Math.min(ra.collectability, collectableGoal), cb = Math.min(rb.collectability, collectableGoal);
+        if (ca !== cb) return ca > cb;
+      } else {
+        if (ra.hqPercent !== rb.hqPercent) return ra.hqPercent > rb.hqPercent;
+        const cap = cr && cr.quality > 0 ? cr.quality : Infinity, qa = Math.min(ra.quality, cap), qb = Math.min(rb.quality, cap);
+        if (qa !== qb) return qa > qb;
+      }
+      return ra.steps < rb.steps;
+    };
     const isFull = function (m) { return !!(m && m.ok && m.result && m.result.success && m.craft && m.craft.quality > 0 && m.result.quality >= m.craft.quality); };
     const stopSecond = function () { pend.ws.forEach(function (x) { try { x.terminate(); } catch (err) { /* 已結束 */ } }); pend.ws = []; pend.pending = 0; };
     const finishAll = function () {
@@ -3590,17 +3598,20 @@ app._craftReady = function () {
         return;
       }
       let pick = list[0];
-      list.forEach(function (m) { if (scoreRes(m.result, m.craft) > scoreRes(pick.result, pick.craft) + 1e-9) pick = m; });
+      list.forEach(function (m) { if (betterRes(m, pick, m.craft)) pick = m; });
       renderResult(pick.craft, pick.result, solvingName, stats, hqIngredients);
     };
-    const startOthers = function (hasLibrary) {
+    const startOthers = function (hasLibrary, beamOnly) {
       if (pend.ws.length) return;
       /* 依電腦的核心數決定同時開幾條策略：核心夠多（≥4）才開全部三條；核心少時只多開「獨立流程」（保證不比原本差的那條），
        * 避免手機、平板等核心少的裝置因為三條同時跑而互相拖慢，反而比原本更慢。 */
       const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
-      ((hasLibrary && cores >= 4) ? ['plain', 'ladder'] : ['plain']).forEach(function (strategy) { // 階梯優先流程需要手法庫當起點；沒有手法庫的配方只多開「獨立流程」當保險（主 Worker 跑的是追求滿品質的流程）
+      /* 'beam'＝集束搜尋（js/craft-exact.js）：跟遺傳演算法完全不同的系統性搜尋，是「額外的候選來源」。上面所有原本的策略照舊都會跑，
+       * 最後用 betterRes 取最好的，所以加入它只會讓結果更好、不會更差。核心少的裝置（手機）把它的運算量縮小，避免拖慢太多。 */
+      const list = beamOnly ? ['beam'] : (((hasLibrary && cores >= 4) ? ['plain', 'ladder'] : ['plain']).concat(['beam']));
+      list.forEach(function (strategy) { // 階梯優先流程需要手法庫當起點；沒有手法庫的配方只多開「獨立流程」當保險（主 Worker 跑的是追求滿品質的流程）
         let wk;
-        try { wk = new Worker('js/craft-worker.js'); } catch (err) { return; }
+        try { wk = newCraftWorker(); } catch (err) { return; }
         pend.ws.push(wk); pend.pending++;
         const settle = function (m) { if (m) pend.others.push(m); pend.pending = Math.max(0, pend.pending - 1); finishAll(); };
         wk.addEventListener('message', function (e2) {
@@ -3608,12 +3619,12 @@ app._craftReady = function () {
           settle(e2.data);
         });
         wk.addEventListener('error', function () { settle(null); });
-        wk.postMessage({ type: 'solve', requestId: requestId, recipeId: selectedRecipe.id, stats: stats, options: { strategy: strategy, lang: 'tw', trials: 3, populationSize: 150, generations: 40, hqIngredients: hqIngredients, collectableGoal: collectableGoal } });
+        wk.postMessage({ type: 'solve', requestId: requestId, recipeId: selectedRecipe.id, stats: stats, options: { strategy: strategy, lang: 'tw', trials: 3, populationSize: 150, generations: 40, hqIngredients: hqIngredients, collectableGoal: collectableGoal, beamMaxExpand: cores >= 4 ? 36e6 : 12e6 } });
       });
     };
     function onMsg(e) {
       if (e.data.requestId !== requestId) return;
-      if (e.data.type === 'solve-info') { if (!e.data.libHit && !collectableGoal) startOthers(e.data.libraryCount > 0); return; }
+      if (e.data.type === 'solve-info') { if (!e.data.libHit) startOthers(e.data.libraryCount > 0, !!collectableGoal); return; }
       if (e.data.type === 'solve-progress') {
         const p = e.data.progress;
         const metric = p.bestCollectability != null ? ('收藏度 ' + p.bestCollectability) : ('優質率約 ' + Math.round(p.bestHqPercent) + '%');
@@ -3976,7 +3987,7 @@ app._craftReady = function () {
       w.postMessage(job.msg ? Object.assign({ requestId: id }, job.msg) : { type: 'solve', requestId: id, recipeId: job.recipeId, stats: job.stats, options: job.options });
     }
     for (let i = 0; i < size; i++) {
-      const w = new Worker('js/craft-worker.js');
+      const w = newCraftWorker();
       w.addEventListener('error', close); // 載入失敗：整個分析放棄（不顯示建議，不影響主結果）
       workers.push(w); idle.push(w);
     }
