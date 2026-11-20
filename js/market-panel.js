@@ -352,7 +352,7 @@
     } catch (e) { /* 抓不到清單就先不管，畫面照常運作 */ }
     pop.style.display = 'flex';
     const r = anchorBtn.getBoundingClientRect();
-    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 280)) + 'px';
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 316)) + 'px';
     pop.style.top = (r.bottom + 6) + 'px';
   }
 
@@ -908,7 +908,7 @@
     delete pop.dataset.dir; // 剛打開才重新決定往上還是往下開，之後內容變化沿用同一邊（見 placePopover）
     pop.dataset.owner = 'avg';
     pop.classList.add('mav-pop');
-    pop.innerHTML = '<p class="mav-title">均價比較' + scopeLabel + '</p><p class="craft-muted" style="font-size:11px;margin:0">讀取歷史成交中⋯</p>';
+    pop.innerHTML = '<p class="mav-title">均價比較' + scopeLabel + '</p><p class="craft-muted" style="font-size:13px;margin:0">讀取歷史成交中⋯</p>';
     pop.style.display = 'block';
     placePopover(pop, anchorBtn.getBoundingClientRect());
     try {
@@ -927,7 +927,7 @@
         if (row) { row.querySelector('strong').textContent = (ov2 && ov2.avgPrice) ? Math.round(ov2.avgPrice).toLocaleString() : '—'; if (!(ov2 && ov2.avgPrice)) row.querySelector('small').textContent = '無掛單'; }
       } catch (e) { const row = document.getElementById('mk-avgprice-listing'); if (row) { row.querySelector('strong').textContent = '—'; row.querySelector('small').textContent = '讀取失敗'; } }
     } catch (e) {
-      pop.innerHTML = '<p class="mav-title">均價比較' + scopeLabel + '</p><p class="craft-muted" style="font-size:11px;margin:0">讀取失敗，請稍後再試。</p>';
+      pop.innerHTML = '<p class="mav-title">均價比較' + scopeLabel + '</p><p class="craft-muted" style="font-size:13px;margin:0">讀取失敗，請稍後再試。</p>';
     }
   }
 
@@ -2446,7 +2446,7 @@
   // 跟物品詳情頁本來就有的5窗口均價彈窗（openAvgPricePopover）是完全獨立的另一份UI，不受影響。
   const AVG_WINDOW_OPTIONS = [['current', '當前'], ['1d', '1天'], ['3d', '3天'], ['7d', '7天']];
   function avgWindowSelectHtml(id, cur) {
-    return '<select id="' + id + '" class="craft-select" style="font-size:11px">' +
+    return '<select id="' + id + '" class="craft-select" style="font-size:13px">' +
       AVG_WINDOW_OPTIONS.map(function (w) { return '<option value="' + w[0] + '"' + (cur === w[0] ? ' selected' : '') + '>' + w[1] + '</option>'; }).join('') +
       '</select>';
   }
@@ -2496,7 +2496,7 @@
       '<div class="market-supply-settings-row">' + MarketData.pricePrefsBarHtml(['buy'], { windows: true, lead: false }) + '</div>' +
         '<p class="craft-muted pp-sync-hint">與生產頁同步</p>' +
             '<div class="market-supply-settings-row"><span>材料品質（全域）</span>' +
-        '<select id="mk-sup-persp" class="craft-select" style="font-size:11px">' +
+        '<select id="mk-sup-persp" class="craft-select" style="font-size:13px">' +
           '<option value="nq"' + (s.matPersp === 'nq' ? ' selected' : '') + '>NQ</option>' +
           '<option value="hq"' + (s.matPersp === 'hq' ? ' selected' : '') + '>HQ</option>' +
           '<option value="auto"' + (s.matPersp === 'auto' ? ' selected' : '') + '>自動（比較NQ/HQ取較低）</option>' +
@@ -2505,7 +2505,7 @@
       '<button type="button" class="market-supply-settings-row market-crystal-toggle" id="mk-sup-crystal" data-on="' + (crystalOn ? '1' : '0') + '">' +
         '<span>忽略水晶成本</span><span class="market-crystal-icon">' + (crystalOn ? '💎' : '◇') + '</span></button>' +
       (graphIds.length ? (
-        '<button type="button" class="market-supply-settings-row market-override-toggle" id="mk-sup-ov-toggle"><span>個別材料品質' + (s.materialsBasis === 'avg' ? '<span class="craft-muted" style="font-size:11px;margin-left:4px">（均價不分品質）</span>' : '') + '</span><i class="ph ph-caret-' + (supplyOverrideSectionOpen ? 'down' : 'right') + '"></i></button>' +
+        '<button type="button" class="market-supply-settings-row market-override-toggle" id="mk-sup-ov-toggle"><span>個別材料品質' + (s.materialsBasis === 'avg' ? '<span class="craft-muted" style="font-size:13px;margin-left:4px">（均價不分品質）</span>' : '') + '</span><i class="ph ph-caret-' + (supplyOverrideSectionOpen ? 'down' : 'right') + '"></i></button>' +
         '<div id="mk-sup-ov-body" style="display:' + (supplyOverrideSectionOpen ? 'block' : 'none') + '">' + overrideRows + '</div>'
       ) : '');
     // 錨點：左右跟著齒輪，上下用「整列操作列」的上緣／下緣。齒輪比旁邊的「查看完整供應鏈清單」按鈕矮，
@@ -4355,7 +4355,9 @@
     return null;
   }
   let tokenCatSel = 'all'; // 目前選的分類，重畫、切換分頁回來都維持
-  let tokenShowHidden = false;
+  const TOKEN_SHOWHIDDEN_KEY = 'ff14fc-token-showhidden';
+  let tokenShowHidden = false; // 「顯示沒有可比價兌換物的代幣」勾選狀態（會記在 localStorage）
+  let tokenPopCloser = null; // 齒輪彈出卡的「點外面就收起」監聽器
   let tokenExcludeSlow = false; // 「排除明顯滯銷物品」勾選狀態（會記在 localStorage）
   /* 預設隱藏的代幣：
    * ① 換到的東西「全部都無法比價」（不可交易，或市場上完全沒有行情）——這類多半是限時活動的兌換物，或只換不可交易的外觀／坐騎，
@@ -4386,6 +4388,7 @@
       if (KEEP_TOKEN_IDS.has(x.id) || !dcData0) return;
       if (!buildCurrencyBestUses(x.id, dcData0, 'listing', 1, 'net').length) hiddenIds[x.id] = true;
     });
+    try { tokenShowHidden = localStorage.getItem(TOKEN_SHOWHIDDEN_KEY) === '1'; } catch (e) { tokenShowHidden = false; }
     const hiddenCount = allList.filter(function (x) { return hiddenIds[x.id]; }).length;
     // 分組：每個代幣歸到一個分類；組內依「可換種類數」多到少。顯示／隱藏切換時要重算，所以包成函式
     const groupOf = {};
@@ -4408,15 +4411,12 @@
     pane.innerHTML =
       '<div class="market-token-topbar market-pane-fixed">' +
         '<button type="button" class="market-fold-btn" id="mk-token-fold-btn" aria-expanded="false"><i class="ph ph-funnel"></i><span class="market-fold-sum" id="mk-token-fold-sum"></span><i class="ph ph-caret-down market-fold-caret"></i></button>' +
+        '<button type="button" id="mk-token-gear" class="market-token-gear" title="代幣兌換設定（顯示無可比價代幣／排除滯銷物品）" aria-label="代幣兌換設定" aria-haspopup="true"><i class="ph ph-gear-six"></i></button>' +
         '<input type="text" id="mk-token-search" class="craft-search" placeholder="搜尋代幣名稱⋯">' +
       '</div>' +
       '<div id="mk-token-fold" class="market-pane-fixed" style="display:none">' +
         '<div class="market-token-scope" id="mk-token-scope"></div>' +
         '<div class="market-token-cats" id="mk-token-cats"></div>' +
-        '<div class="market-token-hiderow">' +
-          '<div class="market-token-hidebar" id="mk-token-hidebar"></div>' +
-          '<label class="market-hot-median" id="mk-token-noslow-label" title="賣速低於 0.3 件/天，且近 7 天成交少於 5 筆的物品（掛了很久也賣不掉）。賣給 NPC 的兌換品必定成交，不受影響。"><input type="checkbox" id="mk-token-noslow"> 排除明顯滯銷物品</label>' +
-        '</div>' +
         '<p class="market-token-note" id="mk-token-note"></p>' +
       '</div>' +
       '<div class="market-pane-scrollbody"><div class="market-token-list" id="mk-token-list"></div></div>';
@@ -4462,7 +4462,7 @@
         // 被隱藏的代幣也要能被「找得到」：搜尋沒結果、但其實有被隱藏的符合時，明講出來，不然玩家會以為沒有這個代幣
         const hiddenMatch = tokenShowHidden ? 0 : allList.filter(function (x) { return hiddenIds[x.id] && x.name.indexOf(kw) !== -1; }).length;
         box.innerHTML = '<p class="craft-muted">' + (sel ? '「' + sel.label + '」裡沒有符合的代幣' + (elsewhere ? '，但其他分類有 ' + elsewhere + ' 個符合，切到「全部」可以看到。' : '。') : '沒有符合的代幣。') +
-          (hiddenMatch ? '　另有 ' + hiddenMatch + ' 個被隱藏的符合（換到的東西都沒有可比價），按上方的「顯示」可以看到。' : '') + '</p>';
+          (hiddenMatch ? '　另有 ' + hiddenMatch + ' 個被隱藏的符合（換到的東西都沒有可比價），點上方的 ⚙ 勾選「顯示沒有可比價兌換物的代幣」就能看到。' : '') + '</p>';
         return;
       }
       if (sel) { box.innerHTML = '<div class="market-token-panel">' + byGroup[sel.key].map(function (x) { return tokenRowHtml(x, false); }).join('') + '</div>'; return; }
@@ -4480,16 +4480,46 @@
       }).join('') + (folded.length ? '<div class="market-token-panel"><div class="market-token-group-title">還有這些分類（數量較多，點進去看）</div><div class="market-token-fold-links">' +
         folded.map(function (g) { return '<button type="button" class="craft-job-filter-btn" data-tcat="' + g.key + '">' + g.label + '<span class="market-token-cat-n">' + byGroup[g.key].length + '</span></button>'; }).join('') + '</div></div>' : '');
     }
-    // 清單上方的一行說明：隱藏了幾個、為什麼，以及把它們叫出來的按鈕（隱藏不是刪除）
-    function renderHideBar() {
-      const bar = $('mk-token-hidebar');
-      if (!hiddenCount) { bar.innerHTML = ''; return; }
-      bar.innerHTML = '<span>' +
-        (tokenShowHidden ? '已顯示全部，含 ' + hiddenCount + ' 個沒有可比價兌換物的代幣' : '已隱藏 ' + hiddenCount + ' 個沒有可比價兌換物的代幣（多為限時活動或無可交易的兌換物）') +
-        '</span><button type="button" class="market-token-hidebtn" id="mk-token-hidebtn">' + (tokenShowHidden ? '再隱藏' : '顯示') + '</button>';
-      $('mk-token-hidebtn').addEventListener('click', function () {
-        tokenShowHidden = !tokenShowHidden; rebuild(); renderCats(); renderList(); renderHideBar();
+    // 齒輪設定（比照上方「市場設定」的彈出卡）：兩個勾選項收在這裡，齒輪放在收合列上，平常就看得到。
+    // 「顯示沒有可比價兌換物的代幣」勾選＝顯示、沒勾選＝隱藏（隱藏不是刪除，勾起來就全部看得到，用淡色標出「無可比價」）。
+    function syncGear() {
+      const g = $('mk-token-gear'); if (g) g.classList.toggle('is-active', !!((hiddenCount && tokenShowHidden) || tokenExcludeSlow)); // 有開啟任何一項就亮點提示
+    }
+    function closeTokenPop() {
+      const old = $('mk-token-popover'); if (old) old.remove();
+      if (tokenPopCloser) { document.removeEventListener('click', tokenPopCloser); tokenPopCloser = null; }
+    }
+    function openTokenPop(anchor) {
+      if ($('mk-token-popover')) { closeTokenPop(); return; } // 再點一次齒輪就收起
+      const pop = document.createElement('div');
+      pop.id = 'mk-token-popover';
+      pop.className = 'craft-mat-worlds-popover craft-settings-popover';
+      pop.style.display = 'flex';
+      pop.innerHTML =
+        '<p class="craft-mat-worlds-title">代幣兌換設定</p>' +
+        (hiddenCount ? '<div class="craft-settings-field"><label class="market-token-popchk"><input type="checkbox" id="mk-token-showhidden"' + (tokenShowHidden ? ' checked' : '') + '><span>顯示沒有可比價兌換物的代幣</span></label>' +
+          '<p class="craft-muted market-token-pophint">目前有 ' + hiddenCount + ' 個（多為限時活動或無可交易的兌換物），沒勾選時不會列出。</p></div>' : '') +
+        '<div class="craft-settings-field"><label class="market-token-popchk" title="賣速低於 0.3 件/天，且近 7 天成交少於 5 筆的物品（掛了很久也賣不掉）。賣給 NPC 的兌換品必定成交，不受影響。"><input type="checkbox" id="mk-token-noslow"' + (tokenExcludeSlow ? ' checked' : '') + '><span>排除明顯滯銷物品</span></label>' +
+          '<p class="craft-muted market-token-pophint">賣速低於 0.3 件/天，且近 7 天成交少於 5 筆。賣給 NPC 的兌換品不受影響。</p></div>';
+      document.body.appendChild(pop);
+      pop.addEventListener('click', function (e) { e.stopPropagation(); });
+      tokenPopCloser = function () { closeTokenPop(); };
+      document.addEventListener('click', tokenPopCloser);
+      const sh = $('mk-token-showhidden');
+      if (sh) sh.addEventListener('change', function () {
+        tokenShowHidden = this.checked;
+        try { localStorage.setItem(TOKEN_SHOWHIDDEN_KEY, tokenShowHidden ? '1' : '0'); } catch (e) { /* 存不了就只對這次有效 */ }
+        rebuild(); renderCats(); renderList(); syncFoldSummary(); syncGear();
       });
+      $('mk-token-noslow').addEventListener('change', function () {
+        tokenExcludeSlow = this.checked;
+        try { localStorage.setItem(TOKEN_NOSLOW_KEY, tokenExcludeSlow ? '1' : '0'); } catch (e) { /* 忽略 */ }
+        syncFoldSummary(); syncGear(); refreshOpenTokenBodies();
+      });
+      const r = anchor.getBoundingClientRect();
+      const w = pop.offsetWidth || 284;
+      pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+      pop.style.top = (r.bottom + 6) + 'px';
     }
     // 篩選區收合（比照熱度排行）：收起時只剩「漏斗＋目前選了什麼」與搜尋框，清單才有空間；選擇會記住，預設收起
     const TOKEN_FOLD_KEY = 'ff14fc-token-fold', TOKEN_NOSLOW_KEY = 'ff14fc-token-noslow';
@@ -4509,7 +4539,6 @@
     $('mk-token-fold-btn').addEventListener('click', function () { setTokenFold($('mk-token-fold').style.display === 'none'); });
     try { if (localStorage.getItem(TOKEN_FOLD_KEY) === 'open') setTokenFold(true); } catch (e) { /* 預設收起 */ }
     try { tokenExcludeSlow = localStorage.getItem(TOKEN_NOSLOW_KEY) === '1'; } catch (e) { tokenExcludeSlow = false; }
-    $('mk-token-noslow').checked = tokenExcludeSlow;
     // 已展開的排行要重算（排序、價格設定、排除滯銷任何一個改了都一樣）；沒展開的下次點開時再算
     function refreshOpenTokenBodies() {
       pane.querySelectorAll('.market-token-body').forEach(function (body) {
@@ -4518,12 +4547,8 @@
         if (open) renderTokenBody(body, body.dataset.tokenId);
       });
     }
-    $('mk-token-noslow').addEventListener('change', function () {
-      tokenExcludeSlow = this.checked;
-      try { localStorage.setItem(TOKEN_NOSLOW_KEY, tokenExcludeSlow ? '1' : '0'); } catch (e) { /* 忽略 */ }
-      syncFoldSummary(); refreshOpenTokenBodies();
-    });
-    renderScope(); renderCats(); renderList(); renderHideBar(); syncFoldSummary();
+    $('mk-token-gear').addEventListener('click', function (e) { e.stopPropagation(); openTokenPop(this); });
+    closeTokenPop(); renderScope(); renderCats(); renderList(); syncFoldSummary(); syncGear();
     if (typeof ResizeObserver === 'function' && $('mk-token-list')) { // 視窗／欄寬改變時，已展開的列重新決定按鈕要完整、縮寫還是換行
       let npcFitRaf = 0;
       new ResizeObserver(function () { cancelAnimationFrame(npcFitRaf); npcFitRaf = requestAnimationFrame(fitAllNpcBtns); }).observe($('mk-token-list'));
@@ -4706,7 +4731,7 @@
       const npcCount = buildCurrencyNpcUses(id, dcData, MarketData.getPricePrefs().sellBasis).length;
       const totalTrades = Number(body.dataset.count) || 0;
       if (!best.length) {
-        body.innerHTML = '<p class="craft-muted">' + (slowCut ? '排除明顯滯銷物品之後，這個代幣沒有剩下可比價的兌換品（排除了 ' + slowCut + ' 種）。可以到上方篩選取消勾選。' : '這個代幣可換的 ' + totalTrades + ' 種東西，都是不可交易且NPC收購價為0，或目前市場上沒有行情的物品。') + '</p>';
+        body.innerHTML = '<p class="craft-muted">' + (slowCut ? '排除明顯滯銷物品之後，這個代幣沒有剩下可比價的兌換品（排除了 ' + slowCut + ' 種）。可以點上方的 ⚙ 取消勾選。' : '這個代幣可換的 ' + totalTrades + ' 種東西，都是不可交易且NPC收購價為0，或目前市場上沒有行情的物品。') + '</p>';
         return;
       }
       // 排行改成「表頭＋對齊的欄」：欄名只在表頭寫一次，點表頭就能換排序。
