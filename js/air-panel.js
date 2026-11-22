@@ -126,7 +126,7 @@ app.buildAir = function () {
 </div>
 <div class="sub-owned-route-block" id="air-owned-route-block" style="display:none">
   <div class="sub-owned-hdr-row"><label class="sub-lbl"><i class="ph ph-package"></i>擁有的部件<span class="sub-exp-badge" data-tip="與「配裝反查」共用同一份記錄。
-勾選後搜尋會忽略維修成本，自動找出效率最高的路線＋建議配裝，計算耗時較久。"><i class="ph ph-info"></i></span></label><div class="sub-owned-actions"><button type="button" id="air-owned-route-all" class="sub-owned-mini-btn"><i class="ph ph-checks"></i>全選</button><button type="button" id="air-owned-route-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
+勾選後搜尋會忽略維修成本，自動找出效率最高的路線＋建議配裝，計算耗時較久。"><i class="ph ph-info"></i></span></label><div class="sub-owned-actions"><button type="button" id="air-owned-route-all" class="sub-owned-mini-btn" title="依等級全選"><i class="ph ph-checks"></i>全選</button><button type="button" id="air-owned-route-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
   <div id="air-owned-route-grid"></div>
   <div class="sub-owned-tier-row"><label class="sub-lbl" for="air-owned-tier"><i class="ph ph-seal-check"></i>獲得物品門檻</label><select id="air-owned-tier" class="sub-sel"><option value="none">不限（純比效率，較快）</option><option value="normal">全程每一站至少「達標」</option><option value="best">全程每一站都「最佳」</option></select><span class="sub-exp-badge" data-tip="開啟門檻篩選時，搜尋範圍變大，會比純比效率慢一些。"><i class="ph ph-info"></i></span></div>
 </div>
@@ -1031,7 +1031,7 @@ app.exploreUi.enhanceAll(root);
     <div class="sub-rev-thr-grp sub-rev-thr-toggle"><label class="sub-lbl"><i class="ph ph-hand-grabbing"></i>收集</label><select id="air-rev-ret" class="sub-sel"><option value="none">不要求</option><option value="normal">達標</option><option value="best">最佳</option><option value="adv">自行輸入</option></select><input type="number" id="air-rev-ret-num" class="sub-inp sub-rev-thr-num" value="0"></div>
     <div class="sub-rev-thr-grp sub-rev-thr-toggle"><label class="sub-lbl"><i class="ph ph-sparkle"></i>恩惠</label><select id="air-rev-fav" class="sub-sel"><option value="none">不要求</option><option value="met">達標(雙倍機會)</option><option value="adv">自行輸入</option></select><input type="number" id="air-rev-fav-num" class="sub-inp sub-rev-thr-num" value="0"></div>
   </div>
-  <div class="sub-owned-hdr-row"><label class="sub-lbl"><i class="ph ph-package"></i>擁有的部件<small>自動記住，下次不用重選</small></label><div class="sub-owned-actions"><button type="button" id="air-owned-all" class="sub-owned-mini-btn"><i class="ph ph-checks"></i>全選</button><button type="button" id="air-owned-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
+  <div class="sub-owned-hdr-row"><label class="sub-lbl"><i class="ph ph-package"></i>擁有的部件<small>自動記住，下次不用重選</small></label><div class="sub-owned-actions"><button type="button" id="air-owned-all" class="sub-owned-mini-btn" title="依等級全選"><i class="ph ph-checks"></i>全選</button><button type="button" id="air-owned-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
   ${ownedHtml}
   ${app.exploreUi.searchRowHtml('air-rev-search-btn')}
   <div id="air-rev-results-dest"><div class="sub-empty">選擇目的地、門檻與擁有的部件後按搜尋</div></div>
@@ -1039,6 +1039,8 @@ app.exploreUi.enhanceAll(root);
   <div id="air-rev-results-stat" style="display:none"><div class="sub-empty">輸入需求值與擁有的部件後按搜尋</div></div>`;
 
     app.exploreUi.enhanceAll(revPanel);
+  /* 反查等級的初始值沿用路線搜尋已記住的等級（原本固定 1，全選會幾乎選不到部件） */
+  { const rr = revPanel.querySelector('#air-rev-rank'); if (rr) rr.value = curRank(); }
 mkStepper(revPanel.querySelector('#air-rev-rank'), { step: 1, min: 1, max: 50, wide: true });
     ['air-rev-sur-num', 'air-rev-ret-num', 'air-rev-fav-num', 'air-rev-stat-sur', 'air-rev-stat-ret', 'air-rev-stat-fav', 'air-rev-stat-spd', 'air-rev-stat-rng'].forEach(id => {
       mkStepper(revPanel.querySelector(`#${id}`), { step: 1, min: 0 });
@@ -1201,10 +1203,13 @@ mkStepper(revPanel.querySelector('#air-rev-rank'), { step: 1, min: 1, max: 50, w
         try { localStorage.setItem(OWNED_KEY, JSON.stringify(ownedParts)); } catch (e) {}
       });
     });
+    /* 全選＝依目前等級套用：只勾等級夠用的部件；畫面從 ownedParts 回推，確保與搜尋資料一致。 */
     const setAllOwned = (checked) => {
-      revPanel.querySelectorAll('.sub-owned-item input').forEach(chk => { chk.checked = checked; });
       ['hull', 'rigging', 'forecastle', 'aftcastle'].forEach(slot => {
         ownedParts[slot] = checked ? AIR_PARTS[slot].filter(p => revRank() >= p[1]).map(p => p[1]) : [];
+      });
+      revPanel.querySelectorAll('.sub-owned-item input[type="checkbox"]').forEach(chk => {
+        chk.checked = (ownedParts[chk.dataset.slot] || []).includes(+chk.dataset.rank);
       });
       try { localStorage.setItem(OWNED_KEY, JSON.stringify(ownedParts)); } catch (e) {}
     };

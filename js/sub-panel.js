@@ -524,7 +524,7 @@ app.buildSub = function (){
 </div>
 <div class="sub-owned-route-block" id="sub-owned-route-block" style="display:none">
   <div class="sub-owned-hdr-row"><label class="sub-lbl"><i class="ph ph-package"></i>擁有的部件<span class="sub-exp-badge" data-tip="與「配裝反查」共用同一份記錄。
-勾選後搜尋會忽略維修成本，自動找出效率最高的路線＋建議配裝，計算耗時較久。"><i class="ph ph-info"></i></span></label><div class="sub-owned-actions"><button type="button" id="sub-owned-route-all" class="sub-owned-mini-btn"><i class="ph ph-checks"></i>全選</button><button type="button" id="sub-owned-route-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
+勾選後搜尋會忽略維修成本，自動找出效率最高的路線＋建議配裝，計算耗時較久。"><i class="ph ph-info"></i></span></label><div class="sub-owned-actions"><button type="button" id="sub-owned-route-all" class="sub-owned-mini-btn" title="依等級全選"><i class="ph ph-checks"></i>全選</button><button type="button" id="sub-owned-route-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
   <div id="sub-owned-route-grid"></div>
   <div class="sub-owned-tier-row"><label class="sub-lbl" for="sub-owned-tier"><i class="ph ph-seal-check"></i>獲得物品門檻</label><select id="sub-owned-tier" class="sub-sel"><option value="none">不限（純比效率，較快）</option><option value="normal">全程每一站至少「達標」</option><option value="best">全程每一站都「最佳」</option></select><span class="sub-exp-badge" data-tip="開啟門檻篩選時，搜尋範圍變大，會比純比效率慢一些。"><i class="ph ph-info"></i></span></div>
 </div>
@@ -1794,7 +1794,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
     <div class="sub-rev-thr-grp sub-rev-thr-toggle"><label class="sub-lbl"><i class="ph ph-hand-grabbing"></i>收集</label><select id="sub-rev-ret" class="sub-sel"><option value="none">不要求</option><option value="normal">達標</option><option value="best">最佳</option><option value="adv">自行輸入</option></select><input type="number" id="sub-rev-ret-num" class="sub-inp sub-rev-thr-num" value="0"></div>
     <div class="sub-rev-thr-grp sub-rev-thr-toggle"><label class="sub-lbl"><i class="ph ph-sparkle"></i>恩惠</label><select id="sub-rev-fav" class="sub-sel"><option value="none">不要求</option><option value="met">達標(雙倍機會)</option><option value="adv">自行輸入</option></select><input type="number" id="sub-rev-fav-num" class="sub-inp sub-rev-thr-num" value="0"></div>
   </div>
-  <div class="sub-owned-hdr-row"><label class="sub-lbl"><i class="ph ph-package"></i>擁有的部件<small>自動記住，下次不用重選</small></label><div class="sub-owned-actions"><button type="button" id="sub-owned-all" class="sub-owned-mini-btn"><i class="ph ph-checks"></i>全選</button><button type="button" id="sub-owned-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
+  <div class="sub-owned-hdr-row"><label class="sub-lbl"><i class="ph ph-package"></i>擁有的部件<small>自動記住，下次不用重選</small></label><div class="sub-owned-actions"><button type="button" id="sub-owned-all" class="sub-owned-mini-btn" title="依等級全選"><i class="ph ph-checks"></i>全選</button><button type="button" id="sub-owned-none" class="sub-owned-mini-btn"><i class="ph ph-x-circle"></i>清除</button></div></div>
   ${ownedHtml}
   ${app.exploreUi.searchRowHtml('sub-rev-search-btn')}
   <div id="sub-rev-results-dest"><div class="sub-empty">選擇目的地、門檻與擁有的部件後按搜尋</div></div>
@@ -1802,6 +1802,8 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
   <div id="sub-rev-results-stat" style="display:none"><div class="sub-empty">輸入需求值與擁有的部件後按搜尋</div></div>`;
 
       app.exploreUi.enhanceAll(revPanel);
+      /* 反查等級的初始值沿用路線搜尋已記住的等級（原本固定 1，全選會幾乎選不到部件） */
+      {const rr=revPanel.querySelector('#sub-rev-rank');if(rr)rr.value=curRank();}
       mkStepper(revPanel.querySelector('#sub-rev-rank'),{step:1,min:1,max:145,wide:true});
       ['sub-rev-sur-num','sub-rev-ret-num','sub-rev-fav-num','sub-rev-stat-sur','sub-rev-stat-ret','sub-rev-stat-fav','sub-rev-stat-spd','sub-rev-stat-rng'].forEach(id=>{
         mkStepper(revPanel.querySelector(`#${id}`),{step:1,min:0});
@@ -1968,12 +1970,16 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
           try{localStorage.setItem(OWNED_KEY,JSON.stringify(ownedParts));}catch(e){}
         });
       });
+      /* 全選＝依目前等級套用：只勾等級夠用的部件，鎖定（等級不足）的不勾。
+         勾選畫面一律從 ownedParts 回推，確保「畫面」與「實際搜尋用的資料」一致。 */
       const setAllOwned=(checked)=>{
-        revPanel.querySelectorAll('.sub-owned-item input').forEach(chk=>{chk.checked=checked;});
         ['hull','stern','bow','bridge'].forEach(slot=>{
           ownedParts[slot]=checked?PARTS[slot].filter(p=>revRank()>=(SUB_PART_MIN_RANK[p[0]]||1)).map(p=>SUB_RANK_CODE_REV[p[0]]):[];
         });
-        try{localStorage.setItem(OWNED_KEY,JSON.stringify(ownedParts));}catch(e){}
+        revPanel.querySelectorAll('.sub-owned-item input[type="checkbox"]').forEach(chk=>{
+          chk.checked=(ownedParts[chk.dataset.slot]||[]).includes(+chk.dataset.rank);
+        });
+        saveOwnedParts();
       };
       revPanel.querySelector('#sub-owned-all')?.addEventListener('click',()=>setAllOwned(true));
       revPanel.querySelector('#sub-owned-none')?.addEventListener('click',()=>setAllOwned(false));
