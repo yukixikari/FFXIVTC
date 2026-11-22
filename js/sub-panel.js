@@ -44,7 +44,7 @@ app.exploreUi = app.exploreUi || (function(){
   if(ch!==null)btn.firstElementChild.innerHTML=ch;else btn.firstElementChild.textContent=cur?cur.text:'';
   btn.classList.toggle('pt-locked',isLocked(cur));
   btn.disabled=sel.disabled;
-  list.innerHTML=Array.prototype.map.call(sel.options,o=>{const h=optHtml(o);return '<button type="button" role="option" class="wl-dd-opt'+(o.selected?' on':'')+(isLocked(o)?' pt-locked':'')+'" data-v="'+String(o.value).replace(/"/g,'&quot;')+'">'+(h!==null?h:o.text)+'</button>';}).join('');
+  list.innerHTML=Array.prototype.map.call(sel.options,o=>{const h=optHtml(o);return '<button type="button" role="option" class="wl-dd-opt'+(o.selected?' on':'')+(isLocked(o)?' pt-locked':'')+(o.disabled?' is-disabled" aria-disabled="true':'')+'" data-v="'+String(o.value).replace(/"/g,'&quot;')+'">'+(h!==null?h:o.text)+'</button>';}).join('');
   };
   render();
     sel._ddRender=render;
@@ -60,6 +60,7 @@ app.exploreUi = app.exploreUi || (function(){
     list.addEventListener('click',e=>{
       const o=e.target.closest('.wl-dd-opt');if(!o)return;
       e.stopPropagation();
+      if(o.classList.contains('is-disabled'))return; // 灰色（不可選）的選項：點了不動作、選單維持開啟
       sel.value=o.dataset.v;
   {const ch=sel.options[sel.selectedIndex];if(ch&&ch.dataset&&ch.dataset.locked==='1')setTimeout(()=>nudge(btn),0);}
       sel.dispatchEvent(new Event('change',{bubbles:true}));
@@ -528,6 +529,10 @@ app.buildSub = function (){
   <div id="sub-owned-route-grid"></div>
   <div class="sub-owned-tier-row"><label class="sub-lbl" for="sub-owned-tier"><i class="ph ph-seal-check"></i>獲得物品門檻</label><select id="sub-owned-tier" class="sub-sel"><option value="none">不限（純比效率，較快）</option><option value="normal">全程每一站至少「達標」</option><option value="best">全程每一站都「最佳」</option></select><span class="sub-exp-badge" data-tip="開啟門檻篩選時，搜尋範圍變大，會比純比效率慢一些。"><i class="ph ph-info"></i></span></div>
 </div>
+<div class="sub-search-opts">
+  <div class="sub-search-opt"><label class="sub-lbl" for="sub-loot-sort"><i class="ph ph-arrows-down-up"></i>結果排序依據</label><select id="sub-loot-sort" class="sub-sel"><option value="exp">EXP 效率（預設）</option><option value="time">最短耗時</option><option value="total">最高經驗值</option><option value="coverage" disabled>物品覆蓋效率（先選必須獲得物品）</option><option value="count" disabled>物品數量效率（先選必須獲得物品）</option></select></div>
+  <div class="sub-search-opt"><label class="sub-lbl" for="sub-max-stops"><i class="ph ph-map-pin-line"></i>站數上限</label><select id="sub-max-stops" class="sub-sel"><option value="5">不限（最多5站）</option><option value="1">只算1站</option><option value="2">最多2站</option><option value="3">最多3站</option><option value="4">最多4站</option></select></div>
+</div>
 ${app.exploreUi.searchRowHtml('sub-search-btn')}
 <div class="sub-filters-section">
   <button id="sub-filters-hdr" class="sub-filters-hdr" type="button"><i class="ph ph-funnel"></i><span>篩選條件</span><i class="ph ph-caret-down fh-caret"></i></button>
@@ -568,7 +573,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
   <div class="sub-filter-col"><label class="sub-lbl sub-lbl-is-inc"><i class="ph ph-plus-circle"></i>必須包含航海圖</label><div class="sub-multisel-wrap" id="sub-inmap-wrap"></div></div>
   <div class="sub-filter-col"><label class="sub-lbl sub-lbl-is-exc"><i class="ph ph-prohibit"></i>排除航海圖</label><div class="sub-multisel-wrap" id="sub-exmap-wrap"></div></div>
 </div>
-<div class="sub-filter-col"><label class="sub-lbl sub-lbl-is-inc"><i class="ph ph-gift"></i>必須獲得物品</label><div class="sub-multisel-wrap" id="sub-loot-wrap"></div><div class="sub-chk-row"><label class="sub-chk-lbl sub-chip-lbl sub-loot-strict-lbl"><input type="checkbox" id="sub-loot-strict"><i class="ph ph-checks"></i>每個目的地都至少有其中一項物品</label><label class="sub-chk-lbl sub-chip-lbl sub-loot-meet-lbl" title="只計入探索性能已經達到取得門檻的物品；還沒達標、理論上有機率但目前配裝拿不到的不算數"><input type="checkbox" id="sub-loot-meet"><i class="ph ph-seal-check"></i>忽略不達標的結果</label></div><div class="sub-loot-sort-row" id="sub-loot-sort-row" style="display:none"><label class="sub-lbl" for="sub-loot-sort"><i class="ph ph-arrows-down-up"></i>結果排序依據</label><select id="sub-loot-sort" class="sub-sel"><option value="exp">EXP 效率（預設）</option><option value="coverage">物品覆蓋效率（短時間內湊齊優先）</option><option value="count">物品數量效率（拿越多越好）</option></select></div></div>
+<div class="sub-filter-col"><label class="sub-lbl sub-lbl-is-inc"><i class="ph ph-gift"></i>必須獲得物品</label><div class="sub-multisel-wrap" id="sub-loot-wrap"></div><div class="sub-chk-row"><label class="sub-chk-lbl sub-chip-lbl sub-loot-strict-lbl"><input type="checkbox" id="sub-loot-strict"><i class="ph ph-checks"></i>每個目的地都至少有其中一項物品</label><label class="sub-chk-lbl sub-chip-lbl sub-loot-meet-lbl" title="只計入探索性能已經達到取得門檻的物品；還沒達標、理論上有機率但目前配裝拿不到的不算數"><input type="checkbox" id="sub-loot-meet"><i class="ph ph-seal-check"></i>忽略不達標的結果</label></div></div>
 <div id="sub-range-disp" class="sub-range-disp"><i class="ph ph-ruler"></i>目前航行距離 <b>—</b></div>
   </div>
 </div>
@@ -591,6 +596,8 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       const strictChk=root.querySelector('#sub-loot-strict');if(strictChk)strictChk.checked=!!savedFilter.lootStrict;
       const meetChk=root.querySelector('#sub-loot-meet');if(meetChk)meetChk.checked=!!savedFilter.lootMustMeet;
       const letterChk=root.querySelector('#sub-letter');if(letterChk)letterChk.checked=!!savedFilter.letterOnly;
+      const sortSel0=root.querySelector('#sub-loot-sort');if(sortSel0&&savedFilter.sortBy&&sortSel0.querySelector(`option[value="${savedFilter.sortBy}"]`))sortSel0.value=savedFilter.sortBy;
+      const stopSel0=root.querySelector('#sub-max-stops');if(stopSel0&&savedFilter.maxStops&&stopSel0.querySelector(`option[value="${savedFilter.maxStops}"]`))stopSel0.value=String(savedFilter.maxStops);
     }
 
     /* ── 路線搜尋的「擁有部件」模式 ──────────────────────────────────
@@ -998,25 +1005,30 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
 
     mkSecFilter('sub-inc-wrap',mustInc);mkSecFilter('sub-excl-wrap',mustExcl);
     mkMapFilter('sub-inmap-wrap',mustIncMaps);mkMapFilter('sub-exmap-wrap',mustExclMaps);
-    /* 排序依據選單：只有勾了「必須獲得物品」才顯示（沒有目標物品清單，
-       「覆蓋幾種／命中幾件」這兩個數字沒有意義），勾選狀態一變動就同步。 */
+    /* 結果排序依據／站數上限：搜尋鈕上方常駐顯示。
+       「物品覆蓋／數量效率」兩項要先有「必須獲得物品」才有意義，沒選物品時
+       變灰並註明原因（不隱藏，讓玩家看得到有這些功能），勾選狀態一變動就同步。 */
+    const SORT_LOOT_NAME={coverage:'物品覆蓋效率',count:'物品數量效率'};
+    const SORT_LOOT_NOTE={coverage:'短時間內湊齊優先',count:'拿越多越好'};
     const updateLootSortVisibility=()=>{
-      const row=root.querySelector('#sub-loot-sort-row');
-      if(row)row.style.display=mustLootIds.length?'':'none';
-      if(!mustLootIds.length){
-        const sel=root.querySelector('#sub-loot-sort');
-        if(sel)sel.value='exp';
-      }
+      const sel=root.querySelector('#sub-loot-sort');if(!sel)return;
+      const has=mustLootIds.length>0;
+      Array.prototype.forEach.call(sel.options,o=>{
+        if(!SORT_LOOT_NAME[o.value])return;
+        o.disabled=!has;
+        o.textContent=SORT_LOOT_NAME[o.value]+'（'+(has?SORT_LOOT_NOTE[o.value]:'先選必須獲得物品')+'）';
+      });
+      if(!has&&SORT_LOOT_NAME[sel.value])sel.value='exp';
+      if(sel._ddRender)sel._ddRender();
     };
     mkLootFilter('sub-loot-wrap',mustLootIds,updateLootSortVisibility);
-    root.querySelector('#sub-loot-sort')?.addEventListener('change',()=>{
-      const sel=root.querySelector('#sub-loot-sort');
-      /* 換成物品效率排序時，候選地點池的生成方式整個不一樣（改成「有目標物品」
-       * 的地點，不是經驗值前 25 名），沒辦法沿用目前畫面上的結果純前端重排，
-       * 需要重新搜尋一次。 */
-      sortKey=sel.value==='exp'?'epm':'itemEff';sortDir=-1;
-      root.querySelector('#sub-search-btn')?.click();
-    });
+    updateLootSortVisibility();
+    /* 排序依據／站數上限一變動：已經搜尋過就依新設定重新搜尋（它們會影響「保留哪 200 筆」，
+       沒辦法只靠前端重排）；還沒搜尋過就只記住設定、不自動搜尋。 */
+    let hasSearched=false;
+    ['#sub-loot-sort','#sub-max-stops'].forEach(q=>root.querySelector(q)?.addEventListener('change',()=>{
+      if(hasSearched)root.querySelector('#sub-search-btn')?.click();
+    }));
 
     /* ── 取得（必要時建立）背景計算用的 Web Worker ──
      * 若瀏覽器不支援 Worker，或 Worker 檔案載入失敗（例如直接用
@@ -1026,7 +1038,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       if(this._subWorkerFailed)return null;
       if(this._subWorker)return this._subWorker;
       try{
-        const w=new Worker('js/sub-worker.js?v=2');
+        const w=new Worker('js/sub-worker.js?v=3');
         w.addEventListener('error',ev=>{
           console.warn('[XIV] sub_worker 執行失敗，改回主執行緒計算：',ev.message);
           this._subWorkerFailed=true;this._subWorker=null;
@@ -1049,7 +1061,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       if(!this._subWorkerPool)this._subWorkerPool=[];
       while(this._subWorkerPool.length<n){
         try{
-          const w=new Worker('js/sub-worker.js?v=2');
+          const w=new Worker('js/sub-worker.js?v=3');
           w.addEventListener('error',ev=>{
             console.warn('[XIV] sub_worker（平行池）執行失敗，改回單一 Worker 計算：',ev.message);
             this._subWorkerPoolFailed=true;
@@ -1077,6 +1089,21 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       const lootStrict=root.querySelector('#sub-loot-strict')?.checked||false;
       const lootMustMeet=root.querySelector('#sub-loot-meet')?.checked||false;
       const res=root.querySelector('#sub-results');
+      hasSearched=true;
+      /* 結果排序依據／站數上限（搜尋鈕上方的兩個下拉選單） */
+      let sortChoice=root.querySelector('#sub-loot-sort')?.value||'exp';
+      if(SORT_LOOT_NAME[sortChoice]&&!mustLootIds.length)sortChoice='exp';
+      const maxStops=Math.min(5,Math.max(1,parseInt(root.querySelector('#sub-max-stops')?.value)||5));
+      const stopsText=maxStops===1?'只算1站':maxStops>=5?'不限':'最多'+maxStops+'站';
+      const lockedPerMap={};mustInc.forEach(id=>{const sc=SECTOR_MAP.get(id);if(sc)lockedPerMap[sc[1]]=(lockedPerMap[sc[1]]||0)+1;});
+      const maxLocked=Math.max(0,...Object.values(lockedPerMap));
+      if(Object.keys(lockedPerMap).length>1){res.innerHTML='<div class="sub-empty">鎖定的目的地分散在不同航海圖，一趟路線只能在同一張航海圖內，請改選同一張圖的目的地</div>';return;}
+      if(maxLocked>maxStops){res.innerHTML=`<div class="sub-empty">已鎖定 ${maxLocked} 個目的地，超過站數上限（${stopsText}），請提高站數上限，或減少「必須包含目的地」</div>`;return;}
+      const SORT_APPLY={exp:['epm',-1],time:['time',1],total:['exp',-1],coverage:['itemEff',-1],count:['itemEff',-1]};
+      const sortApply=SORT_APPLY[sortChoice]||SORT_APPLY.exp;
+      sortKey=sortApply[0];sortDir=sortApply[1];
+      const searchOpts={maxStops,sortBy:({exp:'epm',time:'time',total:'exp'})[sortChoice]||'epm'};
+      subSetSearchOpts(searchOpts);
 
       const timeMode=root.querySelector('#sub-time-mode-target')?.checked?'target':'dur';
       if(timeMode==='target'){
@@ -1219,7 +1246,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
            除以耗時得到效率；沒有勾必須獲得物品時這個下拉選單本來就會被隱藏，
            不會跑到這段。 */
         const lootSortSel=root.querySelector('#sub-loot-sort');
-        const lootSortMode=(mustLootIds.length&&lootSortSel)?lootSortSel.value:'exp';
+        const lootSortMode=(mustLootIds.length&&lootSortSel&&SORT_LOOT_NAME[lootSortSel.value])?lootSortSel.value:'exp';
         const showItemEff=lootSortMode!=='exp';
         if(showItemEff){
           routes.forEach(r=>{
@@ -1450,6 +1477,17 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
         }
       };
 
+      /* 結果上方的說明：筆數、是否被 200 筆上限截斷、以及「再排序只重排目前結果」。 */
+      const renderRoutesCore=renderRoutes;
+      renderRoutes=(routes)=>{
+        renderRoutesCore(routes);
+        if(!routes.length)return;
+        const SORT_NAME={exp:'EXP 效率',time:'最短耗時',total:'最高經驗值',coverage:'物品覆蓋效率',count:'物品數量效率'};
+        const poolByLoot=!!(mustLootIds.length&&SORT_LOOT_NAME[sortChoice]);
+        const truncated=!poolByLoot&&routes.length>=200;
+        res.insertAdjacentHTML('afterbegin',`<div class="sub-target-hint">共 ${routes.length} 筆結果${truncated?`（已達 200 筆上限，保留的是依「${SORT_NAME[sortChoice]}」排在最前面的 200 筆）`:''}。欄位標題（卡片式為排序鈕）可再排序，只會重排目前這些結果。</div>`);
+      };
+
       const handleOwnedResult=(result)=>{
         if(result.noParts){res.innerHTML='<div class="sub-empty">目前擁有的部件組合不出任何符合承載力上限的配裝，請確認勾選或調整等級</div>';return;}
         renderRoutes(result.routes);
@@ -1462,7 +1500,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       };
       const lootTier=owned?(root.querySelector('#sub-owned-tier')?.value||'none'):'none';
       const lootSortSel=root.querySelector('#sub-loot-sort');
-      const lootSortMode=(mustLootIds.length&&lootSortSel)?lootSortSel.value:'exp';
+      const lootSortMode=(mustLootIds.length&&lootSortSel&&SORT_LOOT_NAME[lootSortSel.value])?lootSortSel.value:'exp';
 
       const runOnMainThread=()=>{
         setTimeout(()=>{
@@ -1496,7 +1534,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
           else{console.warn('[XIV] worker 計算發生錯誤，改回主執行緒計算：',ev.data.error);runOnMainThread();}
         };
         worker.addEventListener('message',onMsg);
-        worker.postMessage({reqId,mode:'ownedByLoot',rank:subRank,ownedParts,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,lootStrict,lootTier,lootMustMeet});
+        worker.postMessage({opts:searchOpts,reqId,mode:'ownedByLoot',rank:subRank,ownedParts,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,lootStrict,lootTier,lootMustMeet});
         return;
       }
 
@@ -1519,7 +1557,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
             else{console.warn('[XIV] worker 計算發生錯誤，改回主執行緒計算：',ev.data.error);runOnMainThread();}
           };
           worker.addEventListener('message',onMsg);
-          worker.postMessage({reqId,mode:'owned',rank:subRank,ownedParts,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,letterOnly,lootStrict,lootTier,lootMustMeet});
+          worker.postMessage({opts:searchOpts,reqId,mode:'owned',rank:subRank,ownedParts,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,letterOnly,lootStrict,lootTier,lootMustMeet});
           return;
         }
         const chunks=Array.from({length:pool.length},()=>[]);
@@ -1536,7 +1574,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
             else{console.warn('[XIV] worker（查表）計算發生錯誤，改回主執行緒計算：',ev.data.error);runOnMainThread();}
           };
           evalWorker.addEventListener('message',onEval);
-          evalWorker.postMessage({reqId:evalReqId,mode:'ownedEvaluate',rank:subRank,candidates:allCandidates,ownedParts,mustLootIds,desiredMins,useTime,lootStrict,lootTier,lootMustMeet});
+          evalWorker.postMessage({opts:searchOpts,reqId:evalReqId,mode:'ownedEvaluate',rank:subRank,candidates:allCandidates,ownedParts,mustLootIds,desiredMins,useTime,lootStrict,lootTier,lootMustMeet});
         };
         pool.forEach((w,idx)=>{
           if(!chunks[idx].length)return;
@@ -1554,7 +1592,7 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
             }
           };
           w.addEventListener('message',onMsg);
-          w.postMessage({reqId:enumReqId,mode:'ownedEnumerateMap',rank:subRank,mustInc,mustExcl,mustIncMaps,mustExclMaps,mapIds:chunks[idx]});
+          w.postMessage({opts:searchOpts,reqId:enumReqId,mode:'ownedEnumerateMap',rank:subRank,mustInc,mustExcl,mustIncMaps,mustExclMaps,mapIds:chunks[idx]});
         });
         return;
       }
@@ -1576,8 +1614,8 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       };
       worker.addEventListener('message',onMsg);
       worker.postMessage(lootSortMode!=='exp'
-        ?{reqId,mode:'selectByLoot',rank:subRank,stats:st,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,lootStrict,lootMustMeet}
-        :{reqId,mode:'select',rank:subRank,stats:st,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,letterOnly,lootStrict,lootMustMeet});
+        ?{opts:searchOpts,reqId,mode:'selectByLoot',rank:subRank,stats:st,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,lootStrict,lootMustMeet}
+        :{opts:searchOpts,reqId,mode:'select',rank:subRank,stats:st,mustInc,mustExcl,mustIncMaps,mustExclMaps,mustLootIds,desiredMins,useTime,letterOnly,lootStrict,lootMustMeet});
     };
 
     root.querySelector('#sub-rank-inp')?.addEventListener('input',updateStats);
@@ -1598,6 +1636,8 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
           lootStrict:root.querySelector('#sub-loot-strict')?.checked||false,
           lootMustMeet:root.querySelector('#sub-loot-meet')?.checked||false,
           letterOnly,
+          sortBy:root.querySelector('#sub-loot-sort')?.value||'exp',
+          maxStops:root.querySelector('#sub-max-stops')?.value||'5',
           time:{
             days:root.querySelector('#sub-days')?.value,
             hrs:root.querySelector('#sub-hrs')?.value,
@@ -1619,6 +1659,9 @@ ${app.exploreUi.searchRowHtml('sub-search-btn')}
       const meetChk2=root.querySelector('#sub-loot-meet');if(meetChk2)meetChk2.checked=false;
       const letterChk=root.querySelector('#sub-letter');if(letterChk)letterChk.checked=false;
       letterOnly=false;
+      const sortSel1=root.querySelector('#sub-loot-sort');if(sortSel1)sortSel1.value='exp';
+      const stopSel1=root.querySelector('#sub-max-stops');if(stopSel1)stopSel1.value='5';
+      updateLootSortVisibility();
       saveFilterState();
     });
     /* ── 精簡/完整 視圖切換 ── */
