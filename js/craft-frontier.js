@@ -84,7 +84,8 @@
     var csMax = Infinity;
     if (withMax) {
       var hiLim = Math.max(g.cs, cs * 4);
-      var okCs = function (v) { var r = run(clean, v, g.ct, cp); return r.res.success && (!c.full || (r.sim.quality || 0) >= c.qGoal); };
+      var ctAt = (c.accurate && ct > 0) ? ct : g.ct; // 作業上限要在「這套手法自己的最低加工」下算：用寬裕的加工會讓被截斷的殘缺版本也湊出滿品質，上限就被高估成無限
+      var okCs = function (v) { var r = run(clean, v, ctAt, cp); return r.res.success && (!c.full || (r.sim.quality || 0) >= c.qGoal); };
       if (!okCs(hiLim)) {
         var lo = Math.ceil(cs / step), hi = Math.ceil(hiLim / step); // lo 可行、hi 不可行
         while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (okCs(mid * step)) lo = mid; else hi = mid; }
@@ -92,6 +93,29 @@
       }
     }
     return { cs: cs, ct: ct, cp: cp, csMax: csMax, steps: clean.length, keys: clean.map(function (a) { return a.constructor.name; }) };
+  }
+
+  /* 庫手法／集束搜尋手法的需求評估。這類手法只在「自己的作業範圍」內有效：作業太高，進度在前幾步就做完，
+   * 後面的步驟不會執行，手法會被截成殘缺版本（需求變成作業 19000 以上的垃圾）。所以不能用超大的寬裕數值評估，
+   * 而是由低往高找出第一個「整套手法都能完整執行且達到目標」的作業值，再以它當寬裕數值精確反推需求。
+   * c.gen 只提供加工精度與 CP 的寬裕值（作業由這裡找）；start 是掃描的起點。找不到（在 maxCs 以內都做不到）回傳 null。 */
+  function scanGenCs(craft, rotation, c, start, maxCs) {
+    var g = c.gen;
+    var okAt = function (cs) {
+      var sim = new simulator.Simulation(craft, rotation, c.makeStats(cs, g.ct, g.cp), c.hq);
+      var res = sim.run(true, undefined, c.safeMode);
+      if (!res.success || (c.full && (sim.quality || 0) < c.qGoal)) return false;
+      var ran = 0; for (var i = 0; i < res.steps.length; i++) { var st = res.steps[i]; if (st && !st.skipped && st.success) ran++; }
+      return ran === rotation.length; // 整套手法都有執行（沒有被提早做完截斷）
+    };
+    for (var cs = Math.max(300, Math.floor(start || 300)); cs <= (maxCs || 40000); cs = Math.ceil(cs * 1.04)) if (okAt(cs)) return cs;
+    return null;
+  }
+  function needsOfRotationScan(craft, rotation, c, step, withMax, start, maxCs) {
+    if (c.allowed) { for (var ai = 0; ai < rotation.length; ai++) if (!c.allowed.has(rotation[ai].constructor.name)) return null; }
+    var cs = scanGenCs(craft, rotation, c, start, maxCs);
+    if (cs == null) return null;
+    return needsOfRotation(craft, rotation, Object.assign({}, c, { accurate: true, gen: { cs: cs, ct: c.gen.ct, cp: c.gen.cp } }), step, withMax);
   }
 
   function FrontierGA(recipe, genStats, config, F) {
@@ -180,9 +204,15 @@
     };
     // 手法庫：不論玩家數值多少，都能精確反推每套手法最少需要多少
     var libCands = [];
+    /* msg.accurate（只有「建議分析」會帶）：庫手法只在自己的作業範圍內有效，要由低往高掃描找出範圍再精確反推需求；
+     * 沒帶（主求解的「放寬再收緊＋品質階梯」會反覆呼叫這裡，時間上限很緊）就維持原本的做法，結果與耗時都跟原本一樣。 */
+    var accurate = !!msg.accurate;
     (msg.libKeys || []).forEach(function (keys) {
       try {
-        var n = needsOfRotation(craft, actionsFromKeys(keys), Object.assign({ gen: { cs: Math.max(Math.ceil(ref.cs * 10), 30000), ct: Math.max(Math.ceil(ref.ct * 10), 30000), cp: Math.max(Math.ceil(ref.cp * 10 + 600), 3000) } }, baseCtx), 5, true); // 寬裕數值至少給到 30000，避免玩家數值很低時庫裡的手法因為「寬裕不夠」被誤判為做不到
+        var rot = actionsFromKeys(keys), n;
+        var genLib = { cs: Math.max(Math.ceil(ref.cs * 10), 30000), ct: Math.max(Math.ceil(ref.ct * 10), 30000), cp: Math.max(Math.ceil(ref.cp * 10 + 600), 3000) };
+        if (accurate) n = needsOfRotationScan(craft, rot, Object.assign({ gen: genLib }, baseCtx), 5, true, Math.floor(ref.cs * 0.3));
+        else n = needsOfRotation(craft, rot, Object.assign({ gen: genLib }, baseCtx), 5, true);
         if (n) { var cc = costOf(n); n.cost = cc.cost; n.fromLib = true; libCands.push(n); }
       } catch (e) { /* 這套手法在目前條件下不能用就略過 */ }
     });
@@ -244,7 +274,7 @@
         var genB = { cs: Math.ceil(ref.cs * usedMul), ct: Math.ceil(ref.ct * usedMul), cp: Math.ceil(ref.cp * usedMul + (usedMul > 1 ? 40 : 0)) };
         var keysB = msg.beamFn(genB, msg.beamExpand || 3e6);
         if (keysB && keysB.length) {
-          var nB = needsOfRotation(craft, actionsFromKeys(keysB), Object.assign({ gen: { cs: Math.max(Math.ceil(ref.cs * 10), 30000), ct: Math.max(Math.ceil(ref.ct * 10), 30000), cp: Math.max(Math.ceil(ref.cp * 10 + 600), 3000) } }, baseCtx), 5, true);
+          var nB = needsOfRotation(craft, actionsFromKeys(keysB), Object.assign({ gen: accurate ? genB : { cs: Math.max(Math.ceil(ref.cs * 10), 30000), ct: Math.max(Math.ceil(ref.ct * 10), 30000), cp: Math.max(Math.ceil(ref.cp * 10 + 600), 3000) } }, baseCtx), 5, true); // 精確模式：集束搜尋就是在 genB 找到的（一定做得到），用它評估才不會被截斷；其餘維持原本
           if (nB) { var cB = costOf(nB); nB.cost = cB.cost; nB.fromLib = true; merged.push(nB); }
         }
       } catch (e) { /* 集束搜尋失敗不影響已找到的結果 */ }
@@ -265,5 +295,5 @@
     return { cands: out.slice(0, 16), genMul: usedMul, found: found };
   }
 
-  global.CraftFrontier = { frontierSearch: frontierSearch, needsOfRotation: needsOfRotation };
+  global.CraftFrontier = { frontierSearch: frontierSearch, needsOfRotation: needsOfRotation, needsOfRotationScan: needsOfRotationScan };
 })(typeof self !== 'undefined' ? self : this);

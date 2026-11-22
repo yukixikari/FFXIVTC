@@ -13,21 +13,24 @@
  * 會讓巨集叫出遊戲裡不存在的技能而失敗，因此改為只用它的模擬引擎(simulator)，
  * 「怎麼搜尋最佳序列」這段自己實作在 craft-solver-ga.js。
  */
-importScripts('vendor/ffxiv-simulator.umd.js');
-importScripts('craft-clock.js'); // 虛擬時鐘：讓求解結果可重現
-importScripts('craft-solver-ga.js');
-importScripts('craft-frontier.js'); // 反推「最低所需數值」
-importScripts('craft-sim-fast.js'); // 精簡模擬器（安全模式＋線性）：集束搜尋的底層
-importScripts('craft-exact.js'); // 分層集束搜尋引擎（strategy:'beam' 使用）
+/* 版本參數：panel 以 js/craft-worker.js?v=版本 載入本檔，這裡把同一個版本參數帶給所有 importScripts，
+ * 這樣 Worker 用到的每個檔案都會跟著版本一起更新（瀏覽器對 Worker 腳本的快取很頑固，沒有版本參數時可能新舊檔混用）。 */
+var __V = (typeof self !== 'undefined' && self.location && self.location.search) || '';
+importScripts('vendor/ffxiv-simulator.umd.js' + __V);
+importScripts('craft-clock.js' + __V); // 虛擬時鐘：讓求解結果可重現
+importScripts('craft-solver-ga.js' + __V);
+importScripts('craft-frontier.js' + __V); // 反推「最低所需數值」
+importScripts('craft-sim-fast.js' + __V); // 精簡模擬器（安全模式＋線性）：集束搜尋的底層
+importScripts('craft-exact.js' + __V); // 分層集束搜尋引擎（strategy:'beam' 使用）
 /* 配方資料（craft-data.js，約 9 MB、載入後佔數十 MB）不再於啟動時載入：網頁端送訊息時會把「這一個配方」直接附在 msg.recipe 裡，
  * Worker 只需要那一個配方。每多開一個 Worker 就少載入一份整個配方庫，記憶體與啟動時間都大幅下降，求解結果完全不變
  * （附帶的配方物件跟配方庫裡的是同一份資料）。沒附配方的呼叫端（離線腳本、舊程式）會自動退回到「第一次需要時才載入整份資料」，行為跟以前一樣。 */
 function getRecipe(id, inline) {
   if (inline) return inline;
-  if (typeof CRAFT_RECIPES === 'undefined') importScripts('craft-data.js');
+  if (typeof CRAFT_RECIPES === 'undefined') importScripts('craft-data.js' + __V);
   return CRAFT_RECIPES[id];
 }
-importScripts('craft-action-names.js'); // 提供 CRAFT_ACTION_NAMES_BY_GAME_ID（game id -> 多語言名稱）
+importScripts('craft-action-names.js' + __V); // 提供 CRAFT_ACTION_NAMES_BY_GAME_ID（game id -> 多語言名稱）
 
 /* 把「game id -> 名稱」轉成「模擬引擎技能鍵名(如 BasicSynthesis) -> 名稱」，
  * 用 CraftingActionsRegistry 自己的 getIds() 對照，跟技能來源保證一致，不用手動維護對照表 */
@@ -753,11 +756,12 @@ self.onmessage = async function (e) {
         const keysList = sanitizeKeysList(libraryKeysFor(recipe), allowed);
         const mk = function (cs, ct, cp) { return buildCrafterStats(Object.assign({}, msg.stats, { craftsmanship: cs, control: ct, cp: cp })); };
         const hqAll = (craft.ingredients || []).filter(function (i) { return i.quality > 0; }).map(function (i) { return { id: i.id, amount: i.amount }; });
+        const scanStart = Math.max(300, Math.floor((recipe.suggestedCraftsmanship || 0) * 0.35)); // 掃描作業範圍的起點
         const calc = function (hq) {
           const out = [];
           keysList.forEach(function (keys) {
             try {
-              const n = CraftFrontier.needsOfRotation(craft, actionsFromKeysGlobal(keys), { makeStats: mk, hq: hq, safeMode: true, full: true, qGoal: craft.quality, gen: { cs: 60000, ct: 60000, cp: 6000 }, allowed: allowed }, 5, true);
+              const n = CraftFrontier.needsOfRotationScan(craft, actionsFromKeysGlobal(keys), { makeStats: mk, hq: hq, safeMode: true, full: true, qGoal: craft.quality, gen: { cs: 0, ct: 60000, cp: 6000 }, allowed: allowed }, 5, true, scanStart); // 庫手法只在自己的作業範圍內有效，不能用超大數值評估（會被截斷）
               if (n) out.push({ cs: n.cs, ct: n.ct, cp: n.cp, csMax: n.csMax, steps: n.steps });
             } catch (e) { /* 這套手法不能用就略過 */ }
           });
@@ -783,10 +787,11 @@ self.onmessage = async function (e) {
         // 一批手法各自最少需要的數值（離線產生手法庫時用來篩選互不被壓過的手法）
         const full = msg.goal === 'full';
         const mk = function (cs, ct, cp) { return buildCrafterStats(Object.assign({}, msg.stats, { craftsmanship: cs, control: ct, cp: cp })); };
-        const gen = { cs: 60000, ct: 60000, cp: 6000 };
+        const gen = { cs: 0, ct: 60000, cp: 6000 };
+        const scanStart = Math.max(300, Math.floor((recipe.suggestedCraftsmanship || 0) * 0.35));
         const list = (msg.keysList || []).map(function (keys) {
           try {
-            const n = CraftFrontier.needsOfRotation(craft, actionsFromKeysGlobal(keys), { makeStats: mk, hq: msg.hq || [], safeMode: msg.safeMode !== false, full: full, qGoal: craft.quality, gen: gen }, 5);
+            const n = CraftFrontier.needsOfRotationScan(craft, actionsFromKeysGlobal(keys), { makeStats: mk, hq: msg.hq || [], safeMode: msg.safeMode !== false, full: full, qGoal: craft.quality, gen: gen }, 5, false, scanStart); // 作業範圍由低往高掃，不用超大數值評估（會把手法截斷）
             return n ? { cs: n.cs, ct: n.ct, cp: n.cp, steps: n.steps, keys: n.keys } : null;
           } catch (e) { return null; }
         });
