@@ -177,6 +177,24 @@
   // 把文字放進 HTML 之前先「跳脫」：把 < > & " 換成安全的寫法，這樣名稱裡就算剛好有這些符號，也只會被當成文字顯示，
   // 不會被瀏覽器當成網頁語法（例如名稱裡的 " 會把 title="…" 提早結束）。物品名稱目前都來自你自己的資料所以沒有實際風險，
   // 但從 localStorage（最近查看）讀出來的內容可以被改，加上這一層比較保險。
+  /* ── 搜尋比對共用工具（市場頁所有搜尋框都走這裡）──
+   * 名稱跟關鍵字先過同一套正規化再比：NFKC（全形英數→半形，例如「ＨＱ」「１」）、轉小寫（大小寫不分）、
+   * 去掉所有空白。關鍵字用空白分成多段＝每一段都要符合（順序不拘），跟生產頁的配方搜尋行為一致。
+   * 名稱的正規化結果照物品ID快取，只算一次，不然每敲一個鍵都要對幾萬個名稱重做一遍。 */
+  function normSearch(str) { return String(str == null ? '' : str).normalize('NFKC').toLowerCase().replace(/\s+/g, ''); }
+  function searchTokens(q) { return String(q == null ? '' : q).normalize('NFKC').toLowerCase().split(/\s+/).filter(Boolean); }
+  const NORM_NAME_CACHE = Object.create(null);
+  function normNameOf(id, name) {
+    const hit = NORM_NAME_CACHE[id];
+    if (hit !== undefined && hit.src === name) return hit.n;
+    const n = normSearch(name);
+    NORM_NAME_CACHE[id] = { src: name, n: n };
+    return n;
+  }
+  function tokensMatch(nameN, tokens) {
+    for (let i = 0; i < tokens.length; i++) { if (nameN.indexOf(tokens[i]) === -1) return false; }
+    return true;
+  }
   function escHtml(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   function renderMarketSkeleton() {
@@ -399,6 +417,16 @@
       debounceTimer = setTimeout(runSearch, 120);
     });
     input.addEventListener('compositionend', function () { clearTimeout(debounceTimer); debounceTimer = setTimeout(runSearch, 0); });
+    // 第一次搜尋要把 1.6 萬個名稱都正規化一遍，會讓第一個字卡一下；游標一點進搜尋框就趁空檔先算好。
+    let warmed = false;
+    input.addEventListener('focus', function () {
+      if (warmed) return; warmed = true;
+      const warm = function () {
+        const ids = (typeof ITEM_MARKETABLE_TW !== 'undefined' && ITEM_MARKETABLE_TW.length) ? ITEM_MARKETABLE_TW : Object.keys(ITEM_NAMES_TW_ALL);
+        for (let i = 0; i < ids.length; i++) { const nm = ITEM_NAMES_TW_ALL[ids[i]]; if (nm) normNameOf(ids[i], nm); }
+      };
+      if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 1500 }); else setTimeout(warm, 50);
+    });
     // 結果清單的點擊用事件委派，只綁一次（原本每次搜尋都替每一列重綁 2 個監聽器）
     box.addEventListener('click', function (e) {
       const star = e.target.closest('[data-wl-star]');
@@ -421,10 +449,15 @@
       // 只搜尋可在市場交易的物品（ITEM_MARKETABLE_TW 由 update-craft-data.js 產生）；
       // 貨幣、不可交易的物品不需要被直接搜尋到，仍可從其他物品的兌換清單點進去。
       const ids = (typeof ITEM_MARKETABLE_TW !== 'undefined' && ITEM_MARKETABLE_TW.length) ? ITEM_MARKETABLE_TW : Object.keys(ITEM_NAMES_TW_ALL);
+      const qTokens = searchTokens(q);
+      const qN = normSearch(q);
+      if (!qTokens.length) { closeBox(); return; }
       const matches = [];
       for (let i = 0; i < ids.length; i++) {
         const name = ITEM_NAMES_TW_ALL[ids[i]];
-        if (name && name.indexOf(q) !== -1) matches.push({ id: ids[i], name: name });
+        if (!name) continue;
+        const nameN = normNameOf(ids[i], name);
+        if (tokensMatch(nameN, qTokens)) matches.push({ id: ids[i], name: name, nameN: nameN });
       }
       // 第5點抓到的真正原因：純粹按物品ID排序，會讓「基礎材料」被自己衍生出來的一大堆裝備
       // 名稱排擠出前30名——例如「銀狼革」這個素材本身的ID，剛好比拿它做出來的33件裝備的ID都大，
@@ -432,13 +465,13 @@
       // （這個物品在供應鏈圖上能正確顯示價格，證明資料完全存在），純粹是排序方式的問題。
       // 改成先比對「符合程度」：完全等於搜尋字串 > 開頭符合 > 只是包含在中間；
       // 同等級再比名字長度（越短越接近你在找的東西），最後才用ID排序當保底。
-      function rank(name) {
-        if (name === q) return 0;
-        if (name.indexOf(q) === 0) return 1;
+      function rank(nameN) {
+        if (nameN === qN) return 0;
+        if (nameN.indexOf(qN) === 0) return 1;
         return 2;
       }
       matches.sort(function (a, b) {
-        const ra = rank(a.name), rb = rank(b.name);
+        const ra = rank(a.nameN), rb = rank(b.nameN);
         if (ra !== rb) return ra - rb;
         if (a.name.length !== b.name.length) return a.name.length - b.name.length;
         return Number(a.id) - Number(b.id);
@@ -1251,16 +1284,13 @@
     } catch (e) { /* 讀不到就回傳null，呼叫端自行處理 */ }
     return null;
   }
-  // 整份預先計算快照超過1小時沒更新才提示（平常完全不出現，也不對個別物品標「過舊」）
-  window.addEventListener('market-snapshot-stale', function (e) {
-    const root = document.getElementById('market-root');
-    if (!root || document.getElementById('mk-stale-banner')) return;
-    const mins = Math.round(((e.detail && e.detail.ageMs) || 0) / 60000);
-    const d = document.createElement('div');
-    d.id = 'mk-stale-banner'; d.className = 'craft-muted';
-    d.style.cssText = 'padding:6px 10px;margin:0 0 8px;border:1px solid rgba(245,158,11,.5);border-radius:8px;font-size:12px';
-    d.innerHTML = '<i class="ph ph-warning"></i> 預先計算的價格資料已經 ' + (mins >= 120 ? Math.round(mins / 60) + ' 小時' : mins + ' 分鐘') + '沒有更新，製作成本、熱度排行等估算可能落後；單一物品頁的價格仍是即時查詢。';
-    root.insertBefore(d, root.firstChild);
+  // 原本這裡會在整份預先計算快照超過1小時沒更新時，於市場頁頂端顯示一條黃色警告橫幅。
+  // 站長覺得不好看，已移除（market-data.js 仍會發出 'market-snapshot-stale' 事件，日後要恢復可再接回來）。
+  // 熱度排行／製作商機頁面在資料超過24小時時仍有各自的提示，不受影響。
+  // 若頁面上已經有舊的橫幅（例如來自快取的舊版腳本），保險起見也一併清掉：
+  window.addEventListener('market-snapshot-stale', function () {
+    const old = document.getElementById('mk-stale-banner');
+    if (old) old.remove();
   });
 
   /* ── 統計列／世界價格列的「自動適應」 ──
@@ -4796,14 +4826,16 @@
       const sel = groups.find(function (g) { return g.key === tokenCatSel; });
       $('mk-token-note').textContent = sel ? sel.desc : '';
       $('mk-token-note').style.display = sel ? '' : 'none';
-      if (kw) {
+      const kwTokens = searchTokens(kw);
+      const kwHit = function (x) { return tokensMatch(normNameOf('tok' + x.id, x.name), kwTokens); };
+      if (kwTokens.length) {
         // 搜尋：選了某個分類就只在該分類裡找；選「全部」就全部分類一起找，每列標出所屬分類
         const pool = sel ? byGroup[sel.key] : list;
-        const rows = pool.filter(function (x) { return x.name.indexOf(kw) !== -1; });
+        const rows = pool.filter(kwHit);
         if (rows.length) { box.innerHTML = '<div class="market-token-panel">' + rows.map(function (x) { return tokenRowHtml(x, !sel); }).join('') + '</div>'; return; }
-        const elsewhere = sel ? list.filter(function (x) { return x.name.indexOf(kw) !== -1; }).length : 0;
+        const elsewhere = sel ? list.filter(kwHit).length : 0;
         // 被隱藏的代幣也要能被「找得到」：搜尋沒結果、但其實有被隱藏的符合時，明講出來，不然玩家會以為沒有這個代幣
-        const hiddenMatch = tokenShowHidden ? 0 : allList.filter(function (x) { return hiddenIds[x.id] && x.name.indexOf(kw) !== -1; }).length;
+        const hiddenMatch = tokenShowHidden ? 0 : allList.filter(function (x) { return hiddenIds[x.id] && kwHit(x); }).length;
         box.innerHTML = '<p class="craft-muted">' + (sel ? '「' + sel.label + '」裡沒有符合的代幣' + (elsewhere ? '，但其他分類有 ' + elsewhere + ' 個符合，切到「全部」可以看到。' : '。') : '沒有符合的代幣。') +
           (hiddenMatch ? '　另有 ' + hiddenMatch + ' 個被隱藏的符合（換到的東西都沒有可比價），點上方的 ⚙ 勾選「顯示沒有可比價兌換物的代幣」就能看到。' : '') + '</p>';
         return;
@@ -4908,7 +4940,14 @@
       setTokenFold(false); // 分類是「選一次就看結果」的操作：選完立刻收起，把空間還給清單（摘要會顯示目前分類，想換再點開）
       const sb = pane.querySelector('.market-pane-scrollbody'); if (sb) sb.scrollTop = 0;
     });
-    $('mk-token-search').addEventListener('input', renderList);
+    // 代幣搜尋原本每敲一個鍵就整份重畫；注音／拼音組字中每個鍵都會觸發，手機上很容易卡。
+    // 跟物品搜尋框一樣：組字中不搜、停手 120ms 才搜、組字完成立刻搜。
+    (function () {
+      const tin = $('mk-token-search');
+      let tTimer = 0;
+      tin.addEventListener('input', function (e) { clearTimeout(tTimer); if (e.isComposing) return; tTimer = setTimeout(renderList, 120); });
+      tin.addEventListener('compositionend', function () { clearTimeout(tTimer); tTimer = setTimeout(renderList, 0); });
+    })();
     // 窄容器：搜尋框收成放大鏡鈕，點了才換成搜尋列（關掉會一併清除關鍵字，免得「看不到的篩選」還在作用）
     $('mk-token-sbtn').addEventListener('click', function () {
       setTokenFold(false);

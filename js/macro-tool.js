@@ -2267,10 +2267,10 @@ function emoteComboLabel(val){
   return found?found.l:'';
 }
 function emoteComboDropdownHTML(query,currentVal){
-  var q=(query||'').trim().toLowerCase();
+  var q=(query||'').trim().normalize('NFKC').toLowerCase();
   var filtered=emoteComboOptions().filter(function(o){
     if(!q) return true;
-    return o.l.toLowerCase().indexOf(q)>=0||o.v.toLowerCase().indexOf(q)>=0;
+    return o.l.normalize('NFKC').toLowerCase().indexOf(q)>=0||o.v.normalize('NFKC').toLowerCase().indexOf(q)>=0;
   });
   if(!filtered.length) return '<div class="sub-combo-empty">沒有符合的情感動作，換個關鍵字試試？</div>';
   return filtered.map(function(o){
@@ -2285,15 +2285,15 @@ function fEmoteCombo(id,key,curVal){
   +'</div>';
 }
 function typeComboDropdownHTML(query,currentType){
-  var q=(query||'').trim().toLowerCase();
+  var q=(query||'').trim().normalize('NFKC').toLowerCase();
   var html='',any=false;
   CATS.forEach(function(c){
     var typesInCat=Object.keys(TDEFS).filter(function(k){
       if(TDEFS[k].cat!==c.id) return false;
       if(!q) return true;
       var d=TDEFS[k];
-      return d.label.toLowerCase().indexOf(q)>=0||k.toLowerCase().indexOf(q)>=0
-        ||(d.kw&&d.kw.toLowerCase().indexOf(q)>=0);
+      return d.label.normalize('NFKC').toLowerCase().indexOf(q)>=0||k.normalize('NFKC').toLowerCase().indexOf(q)>=0
+        ||(d.kw&&d.kw.normalize('NFKC').toLowerCase().indexOf(q)>=0);
     });
     if(!typesInCat.length) return;
     any=true;
@@ -2360,12 +2360,12 @@ function pickerHTML(){
   +'</div>';
 }
 function pickerResultsHTML(){
-  var q=(pickerSearch||'').trim().toLowerCase();
+  var q=(pickerSearch||'').trim().normalize('NFKC').toLowerCase();
   if(q){
     var matches=Object.keys(TDEFS).filter(function(k){
       var d=TDEFS[k];
-      return d.label.toLowerCase().indexOf(q)>=0||k.toLowerCase().indexOf(q)>=0
-        ||(d.kw&&d.kw.toLowerCase().indexOf(q)>=0);
+      return d.label.normalize('NFKC').toLowerCase().indexOf(q)>=0||k.normalize('NFKC').toLowerCase().indexOf(q)>=0
+        ||(d.kw&&d.kw.normalize('NFKC').toLowerCase().indexOf(q)>=0);
     });
     if(!matches.length){
       return '<div class="mt-picker-empty">沒有符合「'+esc(pickerSearch)+'」的指令類型，換個關鍵字試試？</div>';
