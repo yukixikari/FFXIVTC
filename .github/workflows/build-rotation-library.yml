@@ -73,7 +73,7 @@ jobs:
         run: |
           FILES=$(find shards -name '*.json')
           if [ -z "$FILES" ]; then echo "沒有任何分片產生結果"; exit 1; fi
-          node tools/build-rotation-library.js --merge $FILES --out data/craft-rotation-library.json
+          node tools/build-rotation-library.js --merge $FILES --out data/craft-rotation-library.json --prune 12   # 合併後自動修剪：高等級每個形狀只留約 12 套不被壓過的手法，庫約縮小一半，求解結果實測沒有變差
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add data/craft-rotation-library.json
